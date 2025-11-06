@@ -1,7 +1,9 @@
 package mysql
 
 import (
-	"backend/pkg/logs"
+	"backend/config"
+	"backend/pkg/logger"
+	"context"
 	"database/sql"
 	"fmt"
 	"time"
@@ -11,29 +13,17 @@ import (
 
 var MysqlCli *MysqlClient
 
-type MysqlClient struct{
+type MysqlClient struct {
 	Client *sql.DB
 }
 
-// MysqlCOnfig Mysql配置
-type MysqlCOnfig struct{
-	Host string `yaml:"host"`
-	Port int `yaml:"port"`
-	User string `yaml:"user"`
-	Password string `yaml:"password"`
-	Database string `yaml:"database"`
-	Charset string `yaml:"charset"`
-	MaxOpenConns int `yaml:"max_open_conns"`
-	MaxIdleConns int `yaml:"max_idle_conns"`
-	MaxLifetime int `yaml:"max_lifetime"`
-}
-
 // GetMysqlClient 获取Mysql客户端
-func GetMysqlClient(config MysqlCOnfig) (*MysqlClient, error) {
+// 使用 config.MysqlConfig 作为参数类型
+func GetMysqlClient(cfg config.MysqlConfig) (*MysqlClient, error) {
 	if MysqlCli != nil {
 		return MysqlCli, nil
 	}
-	db, err := InitMysqlClient(config)
+	db, err := InitMysqlClient(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -42,22 +32,25 @@ func GetMysqlClient(config MysqlCOnfig) (*MysqlClient, error) {
 }
 
 // InitMysqlClient 初始化Mysql客户端
-func InitMysqlClient(config MysqlCOnfig) (*sql.DB, error) {
+func InitMysqlClient(cfg config.MysqlConfig) (*sql.DB, error) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=%s&parseTime=True&loc=Local",
-		config.User, config.Password, config.Host, config.Port, config.Database, config.Charset)
+		cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Database, cfg.Charset)
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
-		return nil,fmt.Errorf("failed to open mysql connect: %v",err)
+		return nil, fmt.Errorf("failed to open mysql connect: %v", err)
 	}
-	db.SetMaxOpenConns(config.MaxOpenConns)
-	db.SetMaxIdleConns(config.MaxIdleConns)
-	db.SetConnMaxLifetime(time.Duration(config.MaxLifetime) * time.Minute)
+	db.SetMaxOpenConns(cfg.MaxOpenConns)
+	db.SetMaxIdleConns(cfg.MaxIdleConns)
+	db.SetConnMaxLifetime(time.Duration(cfg.MaxLifetime) * time.Minute)
 
-	// 测试连接是否成功
-	if err := db.Ping(); err != nil {
+	// 测试连接是否成功（带超时）
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("failed to ping mysql server: %v", err)
 	}
-	logs.L().Info("Mysql客户端初始化成功")
+	logger.L().Info("Mysql客户端初始化成功")
 	return db, nil
 }
 

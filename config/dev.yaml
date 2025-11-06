@@ -20,3 +20,35 @@ minio:
   secret_access_key: minio@666
   use_ssl: false
   region: "us-east-1"
+
+logger:
+  level: debug
+  encoding: console
+  development: true
+  enableCaller: true
+  enableStacktrace: false
+  stacktraceLevel: error
+  outputPaths:
+    - stdout
+    - ../data/logs/app.log
+  errorOutputPaths:
+    - stderr
+    - ../data/logs/error.log
+  serviceName: sensor-manage-hub
+  environment: dev
+  async: true
+  asyncBufferSize: 256     # 单位:kb
+  asyncFlushInterval: 200 # 单位:ms
+  sampling:
+    enable: false
+    tick: 1
+    first: 100
+    thereafter: 100
+    level: info
+  file:
+    enable: false
+    filename: ../data/logs/retated.log
+    maxSize: 128
+    maxBackups: 7
+    maxAge: 7
+    compress: false
