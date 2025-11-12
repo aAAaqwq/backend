@@ -78,12 +78,19 @@ type LoggerConfig struct {
 	AsyncFlushInterval int                  `yaml:"asyncFlushInterval"` // 异步刷新间隔（毫秒），默认200ms
 }
 
+type ServerConfig struct {
+	Host string `yaml:"host"`
+	Port string `yaml:"port"`
+	Mode string `yaml:"mode"`
+}
+
 // ==================== 主配置结构 ====================
 // Config 应用配置（集中管理所有配置）
 type Config struct {
 	Mysql    MysqlConfig    `yaml:"mysql"`
 	InfluxDB InfluxDBConfig `yaml:"influxdb"`
 	MinIO    MinIOConfig    `yaml:"minio"`
+	Server   ServerConfig   `yaml:"server"`
 	Logger   LoggerConfig   `yaml:"logger"`
 }
 

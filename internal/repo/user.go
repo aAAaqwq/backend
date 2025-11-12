@@ -1,0 +1,93 @@
+package repo
+
+import (
+	"backend/internal/db/mysql"
+	"backend/internal/model"
+	"backend/pkg/utils"
+)
+
+type UserRepository struct {}
+
+
+func NewUserRepository() *UserRepository {
+	return &UserRepository{}
+}
+
+func (r *UserRepository) CreateUser(user *model.User) error {
+	query:="INSERT INTO user (uid, role, username, email, password_hash) VALUES (?, ?, ?, ?, ?)"
+	_,err:=mysql.MysqlCli.Client.Exec(query,			
+		user.UID, user.Role, user.Username, user.Email, user.PasswordHash)
+	if err!= nil {
+		return err
+	}
+	return nil
+}
+
+func (r *UserRepository) UpdateUser(user *model.User) error {
+	query := "UPDATE user SET update_at = ? "
+	args:=[]interface{}{user.UpdateAt, user.UID}
+
+	if !utils.IsEmpty(user.Role) {
+		query += " , role = ?"
+		args = append(args, user.Role)
+	}
+	if !utils.IsEmpty(user.Username) {
+		query += " , username = ?"
+		args = append(args, user.Username)
+	}
+	if !utils.IsEmpty(user.Email) {
+		query += " , email = ?"
+		args = append(args, user.Email)
+	}
+	if !utils.IsEmpty(user.PasswordHash) {
+		query += " , password_hash = ?"
+		args = append(args, user.PasswordHash)
+	}
+	
+	query += " WHERE uid = ?"
+	args = append(args, user.UID)
+	
+	_,err:=mysql.MysqlCli.Client.Exec(query, args...)
+	if err!= nil {
+		return err
+	}
+	return nil
+}
+
+func (r *UserRepository) DeleteUser(uid int64) error {
+	_,err:=mysql.MysqlCli.Client.Exec("DELETE FROM user WHERE uid = ?", uid)
+	if err!= nil {
+		return err
+	}
+	return nil
+}
+
+func (r *UserRepository) GetUserByUID(uid int64)(*model.User, error) {		
+	var user *model.User
+	err:=mysql.MysqlCli.Client.QueryRow("SELECT * FROM user WHERE uid = ?", uid).
+	Scan(&user)
+	if err!= nil {
+		return user, err
+	}
+	return user, nil
+}
+
+func (r *UserRepository) GetUserByUsername(username string)(*model.User, error) {
+	var user *model.User
+	err:=mysql.MysqlCli.Client.QueryRow("SELECT * FROM user WHERE username = ?", username).
+	Scan(user)
+	if err!= nil {
+		return user, err
+	}
+	return user, nil
+}
+
+func (r *UserRepository) GetUserByEmail(email string)(*model.User, error) {
+	var user *model.User
+	err:=mysql.MysqlCli.Client.QueryRow("SELECT * FROM user WHERE email = ?", email).
+	Scan(user)
+	if err!= nil {
+		return user, err
+	}
+	return user, nil
+}
