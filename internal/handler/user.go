@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"backend/internal/middleware"
 	"backend/internal/model"
 	"backend/internal/service"
 	"backend/pkg/logger"
@@ -61,6 +62,12 @@ func (h *UserHandler) UpdateUserInfo(c *gin.Context) {
 		Error(c, CodeBadRequest, err.Error())
 		return
 	}
+	// 从上下文获取uid
+	updateUserReq.UID, _ = middleware.GetCurrentUserID(c)
+	if utils.IsEmpty(updateUserReq.UID) {
+		Error(c, CodeBadRequest, "用户ID不能为空")
+		return
+	}
 
 	// 调用服务层更新用户信息
 	if _, err := h.userService.UpdateUserInfo(updateUserReq); err != nil {
@@ -77,6 +84,18 @@ func (h *UserHandler) UpdateUserPassword(c *gin.Context) {
 	updatePasswordReq := &model.ChangePasswordReq{}
 	if err := c.ShouldBindJSON(updatePasswordReq); err != nil {
 		Error(c, CodeBadRequest, err.Error())
+		return
+	}
+	if utils.IsEmpty(updatePasswordReq.UID) {
+		var ok bool
+		updatePasswordReq.UID, ok = middleware.GetCurrentUserID(c)
+		if !ok {
+			Error(c, CodeBadRequest, "用户ID不能为空")
+			return
+		}
+	}
+	if utils.IsEmpty(updatePasswordReq.NewPassword) || utils.IsEmpty(updatePasswordReq.OldPassword) {
+		Error(c, CodeBadRequest, "新密码或旧密码不能为空")
 		return
 	}
 
@@ -140,8 +159,12 @@ func (h *UserHandler) GetUserDevices(c *gin.Context) {
 	uidStr := c.Param("uid")
 	uid, err := utils.ConvertToInt64(uidStr)
 	if err != nil {
-		Error(c, CodeBadRequest, "无效的用户ID")
-		return
+		var ok bool
+		uid, ok = middleware.GetCurrentUserID(c)
+		if !ok {
+			Error(c, CodeBadRequest, "无效的用户ID")
+			return
+		}
 	}
 
 	// 获取查询参数
@@ -206,6 +229,10 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 	// 从请求中获取用户ID
 	uid, _ := c.GetQuery("uid")
 	uidInt, _ := utils.ConvertToInt64(uid)
+	if utils.IsEmpty(uidInt) {
+		Error(c, CodeBadRequest, "用户ID不能为空")
+		return
+	}
 
 	// 调用服务层删除用户
 	if err := h.userService.DeleteUser(uidInt); err != nil {
@@ -221,14 +248,21 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 	user := &model.User{}
 	uid, _ := c.GetQuery("uid")
 	user.UID, _ = utils.ConvertToInt64(uid)
+	if uid==""{
+		// 从上下文获取uid
+		user.UID,_ = middleware.GetCurrentUserID(c)
+		logger.L().Info("从上下文获取uid", logger.WithAny("uid", user.UID))
+	}
+	
 	user.Email, _ = c.GetQuery("email")
 	user.Username, _ = c.GetQuery("username")
+
 
 	if utils.IsEmpty(user.UID) && utils.IsEmpty(user.Email) && utils.IsEmpty(user.Username) {
 		Error(c, CodeBadRequest, "uid or email or username is required")
 		return
 	}
-
+	// logger.L().Info("UID", logger.WithAny("uid", user.UID))
 	user, err := h.userService.GetUser(user)
 	if err != nil {
 		logger.L().Error("获取用户失败", logger.WithError(err))

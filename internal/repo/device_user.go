@@ -21,7 +21,7 @@ func (r *DeviceUserRepository) BindDeviceUser(deviceUser *model.DeviceUser) erro
 	// 检查是否已绑定
 	var count int
 	err := mysql.MysqlCli.Client.QueryRow(
-		"SELECT COUNT(*) FROM device_user WHERE dev_id = ? AND uid = ?",
+		"SELECT COUNT(*) FROM user_dev WHERE dev_id = ? AND uid = ?",
 		deviceUser.DevID, deviceUser.UID).Scan(&count)
 	if err != nil {
 		return err
@@ -33,7 +33,7 @@ func (r *DeviceUserRepository) BindDeviceUser(deviceUser *model.DeviceUser) erro
 	// 检查设备绑定的用户数量（最多3个）
 	var userCount int
 	err = mysql.MysqlCli.Client.QueryRow(
-		"SELECT COUNT(*) FROM device_user WHERE dev_id = ?",
+		"SELECT COUNT(*) FROM user_dev WHERE dev_id = ?",
 		deviceUser.DevID).Scan(&userCount)
 	if err != nil {
 		return err
@@ -43,7 +43,7 @@ func (r *DeviceUserRepository) BindDeviceUser(deviceUser *model.DeviceUser) erro
 	}
 
 	// 插入绑定关系
-	query := `INSERT INTO device_user (uid, dev_id, permission_level, is_active, bound_at, update_at) 
+	query := `INSERT INTO user_dev (uid, dev_id, permission_level, is_active, bound_at, update_at) 
 		VALUES (?, ?, ?, ?, ?, ?)`
 	_, err = mysql.MysqlCli.Client.Exec(query,
 		deviceUser.UID, deviceUser.DevID, deviceUser.PermissionLevel,
@@ -53,11 +53,11 @@ func (r *DeviceUserRepository) BindDeviceUser(deviceUser *model.DeviceUser) erro
 
 // GetDeviceUsers 获取设备的绑定用户列表
 func (r *DeviceUserRepository) GetDeviceUsers(devID int64) ([]*model.DeviceUserWithInfo, error) {
-	query := `SELECT du.uid, u.username, u.email, du.permission_level, du.is_active, du.bound_at
-		FROM device_user du
-		LEFT JOIN user u ON du.uid = u.uid
-		WHERE du.dev_id = ?
-		ORDER BY du.bound_at DESC`
+	query := `SELECT ud.uid, u.username, u.email, ud.permission_level, ud.is_active, ud.bound_at
+		FROM user_dev ud
+		LEFT JOIN user u ON ud.uid = u.uid
+		WHERE ud.dev_id = ?
+		ORDER BY ud.bound_at DESC`
 
 	rows, err := mysql.MysqlCli.Client.Query(query, devID)
 	if err != nil {
@@ -84,7 +84,7 @@ func (r *DeviceUserRepository) GetDeviceUsers(devID int64) ([]*model.DeviceUserW
 func (r *DeviceUserRepository) GetDeviceUser(devID, uid int64) (*model.DeviceUser, error) {
 	deviceUser := &model.DeviceUser{}
 	query := `SELECT uid, dev_id, permission_level, is_active, bound_at, update_at
-		FROM device_user WHERE dev_id = ? AND uid = ?`
+		FROM user_dev WHERE dev_id = ? AND uid = ?`
 
 	err := mysql.MysqlCli.Client.QueryRow(query, devID, uid).Scan(
 		&deviceUser.UID, &deviceUser.DevID, &deviceUser.PermissionLevel,
@@ -101,7 +101,7 @@ func (r *DeviceUserRepository) GetDeviceUser(devID, uid int64) (*model.DeviceUse
 
 // UpdateDeviceUser 更新设备用户绑定关系
 func (r *DeviceUserRepository) UpdateDeviceUser(deviceUser *model.DeviceUser) error {
-	query := `UPDATE device_user SET permission_level = ?, is_active = ?, update_at = ?
+	query := `UPDATE user_dev SET permission_level = ?, is_active = ?, update_at = ?
 		WHERE dev_id = ? AND uid = ?`
 
 	_, err := mysql.MysqlCli.Client.Exec(query,
@@ -113,13 +113,13 @@ func (r *DeviceUserRepository) UpdateDeviceUser(deviceUser *model.DeviceUser) er
 // UnbindDeviceUser 解绑用户设备
 func (r *DeviceUserRepository) UnbindDeviceUser(devID, uid int64) error {
 	_, err := mysql.MysqlCli.Client.Exec(
-		"DELETE FROM device_user WHERE dev_id = ? AND uid = ?", devID, uid)
+		"DELETE FROM user_dev WHERE dev_id = ? AND uid = ?", devID, uid)
 	return err
 }
 
 // GetUserDevices 获取用户绑定的设备列表
 func (r *DeviceUserRepository) GetUserDevices(uid int64, page, pageSize int, devType string, devStatus *int, permissionLevel string, isActive *bool) ([]*model.Device, int64, error) {
-	whereClause := "WHERE du.uid = ?"
+	whereClause := "WHERE ud.uid = ?"
 	args := []interface{}{uid}
 
 	if !utils.IsEmpty(devType) {
@@ -131,18 +131,18 @@ func (r *DeviceUserRepository) GetUserDevices(uid int64, page, pageSize int, dev
 		args = append(args, *devStatus)
 	}
 	if !utils.IsEmpty(permissionLevel) {
-		whereClause += " AND du.permission_level = ?"
+		whereClause += " AND ud.permission_level = ?"
 		args = append(args, permissionLevel)
 	}
 	if isActive != nil {
-		whereClause += " AND du.is_active = ?"
+		whereClause += " AND ud.is_active = ?"
 		args = append(args, *isActive)
 	}
 
 	// 查询总数
 	var total int64
-	countQuery := `SELECT COUNT(*) FROM device_user du
-		INNER JOIN device d ON du.dev_id = d.dev_id ` + whereClause
+	countQuery := `SELECT COUNT(*) FROM user_dev ud
+		INNER JOIN device d ON ud.dev_id = d.dev_id ` + whereClause
 	err := mysql.MysqlCli.Client.QueryRow(countQuery, args...).Scan(&total)
 	if err != nil {
 		return nil, 0, err
@@ -153,10 +153,10 @@ func (r *DeviceUserRepository) GetUserDevices(uid int64, page, pageSize int, dev
 	query := `SELECT d.dev_id, d.dev_name, d.dev_type, d.dev_model, d.dev_power, d.dev_status,
 		d.firmware_version, d.sampling_frequency, d.data_upload_interval, d.offline_threshold,
 		d.extended_config, d.create_at, d.update_at
-		FROM device_user du
-		INNER JOIN device d ON du.dev_id = d.dev_id
+		FROM user_dev ud
+		INNER JOIN device d ON ud.dev_id = d.dev_id
 		` + whereClause + `
-		ORDER BY du.bound_at DESC
+		ORDER BY ud.bound_at DESC
 		LIMIT ? OFFSET ?`
 	args = append(args, pageSize, offset)
 

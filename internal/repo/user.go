@@ -24,7 +24,7 @@ func (r *UserRepository) CreateUser(user *model.User) error {
 
 func (r *UserRepository) UpdateUser(user *model.User) error {
 	query := "UPDATE user SET update_at = ? "
-	args := []interface{}{user.UpdateAt, user.UID}
+	args := []interface{}{user.UpdateAt}
 
 	if !utils.IsEmpty(user.Role) {
 		query += " , role = ?"
@@ -62,33 +62,33 @@ func (r *UserRepository) DeleteUser(uid int64) error {
 }
 
 func (r *UserRepository) GetUserByUID(uid int64) (*model.User, error) {
-	var user *model.User
+	var user model.User
 	err := mysql.MysqlCli.Client.QueryRow("SELECT * FROM user WHERE uid = ?", uid).
-		Scan(&user)
+		Scan(&user.UID,&user.Role,&user.Username,&user.Email,&user.PasswordHash,&user.CreateAt,&user.UpdateAt)
 	if err != nil {
-		return user, err
+		return &user, err
 	}
-	return user, nil
+	return &user, nil
 }
 
 func (r *UserRepository) GetUserByUsername(username string) (*model.User, error) {
-	var user *model.User
+	var user model.User
 	err := mysql.MysqlCli.Client.QueryRow("SELECT * FROM user WHERE username = ?", username).
-		Scan(user)
+	Scan(&user.UID,&user.Role,&user.Username,&user.Email,&user.PasswordHash,&user.CreateAt,&user.UpdateAt)
 	if err != nil {
-		return user, err
+		return &user, err
 	}
-	return user, nil
+	return &user, nil
 }
 
 func (r *UserRepository) GetUserByEmail(email string) (*model.User, error) {
-	var user *model.User
+	var user model.User
 	err := mysql.MysqlCli.Client.QueryRow("SELECT * FROM user WHERE email = ?", email).
-		Scan(user)
+	Scan(&user.UID,&user.Role,&user.Username,&user.Email,&user.PasswordHash,&user.CreateAt,&user.UpdateAt)
 	if err != nil {
-		return user, err
+		return &user, err
 	}
-	return user, nil
+	return &user, nil
 }
 
 // GetUsers 获取用户列表（分页）

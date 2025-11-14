@@ -90,7 +90,7 @@ func Init(cfg *config.Config) error {
 	if err := InitClient(cfg); err != nil {
 		return fmt.Errorf("初始化客户端失败: %v", err)
 	}
-	defer CloseClient()
+
 
 	// 初始化JWT密钥
 	utils.LoadJWTSecret(cfg)
@@ -115,6 +115,7 @@ func main() {
 		logger.L().Error("初始化失败", logger.WithError(err))
 		os.Exit(1)
 	}
+	defer CloseClient()
 
 	// 默认配置
 	r := gin.Default()
