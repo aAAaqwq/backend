@@ -84,6 +84,10 @@ type ServerConfig struct {
 	Mode string `yaml:"mode"`
 }
 
+
+type JWTConfig struct {
+	Secret string `yaml:"secret"`
+}
 // ==================== 主配置结构 ====================
 // Config 应用配置（集中管理所有配置）
 type Config struct {
@@ -92,6 +96,7 @@ type Config struct {
 	MinIO    MinIOConfig    `yaml:"minio"`
 	Server   ServerConfig   `yaml:"server"`
 	Logger   LoggerConfig   `yaml:"logger"`
+	JWT      JWTConfig      `yaml:"jwt"`
 }
 
 // InitConfig 初始化配置（从YAML文件加载）

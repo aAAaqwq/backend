@@ -3,9 +3,10 @@ package model
 import "time"
 
 const (
-	FileTypeVideo = "video"
-	FileTypeAudio = "audio"
-	FileTypeImage = "image"
+	DataTypeVideo = "video"
+	DataTypeAudio = "audio"
+	DataTypeImage = "image"
+	DataTypeSeries = "series"
 )
 
 type SensorData struct{

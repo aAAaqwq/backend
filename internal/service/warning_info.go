@@ -1,0 +1,54 @@
+package service
+
+import (
+	"backend/internal/model"
+	"backend/internal/repo"
+	"backend/pkg/utils"
+)
+
+type WarningInfoService struct {
+	warningRepo *repo.WarningInfoRepository
+}
+
+func NewWarningInfoService() *WarningInfoService {
+	return &WarningInfoService{warningRepo: repo.NewWarningInfoRepository()}
+}
+
+// CreateWarningInfo 创建告警信息
+func (s *WarningInfoService) CreateWarningInfo(warning *model.WarningInfo) (*model.WarningInfo, error) {
+	warning.AlertID = utils.GetDefaultSnowflake().Generate()
+	if warning.TriggeredAt.IsZero() {
+		warning.TriggeredAt = utils.GetCurrentTime()
+	}
+
+	err := s.warningRepo.CreateWarningInfo(warning)
+	if err != nil {
+		return nil, err
+	}
+
+	return warning, nil
+}
+
+// GetWarningInfo 获取告警信息
+func (s *WarningInfoService) GetWarningInfo(alertID int64) (*model.WarningInfo, error) {
+	return s.warningRepo.GetWarningInfo(alertID)
+}
+
+// GetWarningInfoList 获取告警信息列表
+func (s *WarningInfoService) GetWarningInfoList(page, pageSize int, alertType, alertStatus string) ([]*model.WarningInfo, int64, error) {
+	return s.warningRepo.GetWarningInfoList(page, pageSize, alertType, alertStatus)
+}
+
+// UpdateWarningInfo 更新告警信息
+func (s *WarningInfoService) UpdateWarningInfo(warning *model.WarningInfo) (*model.WarningInfo, error) {
+	err := s.warningRepo.UpdateWarningInfo(warning)
+	if err != nil {
+		return nil, err
+	}
+	return warning, nil
+}
+
+// DeleteWarningInfo 删除告警信息
+func (s *WarningInfoService) DeleteWarningInfo(alertID int64) error {
+	return s.warningRepo.DeleteWarningInfo(alertID)
+}

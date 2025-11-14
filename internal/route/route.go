@@ -2,10 +2,10 @@ package route
 
 import (
 	"backend/internal/handler"
+	"backend/internal/middleware"
 
 	"github.com/gin-gonic/gin"
 )
-
 
 func RegisterRoutes(router *gin.Engine) {
 	api := router.Group("/api/v1")
@@ -14,41 +14,47 @@ func RegisterRoutes(router *gin.Engine) {
 		userHandler := handler.NewUserHandler()
 		api.POST("/users/register", userHandler.Register)
 		api.POST("/users/login", userHandler.Login)
-		api.GET("/users", userHandler.GetUser)
-		api.PUT("/users", userHandler.UpdateUserInfo)
-		api.PUT("/users/password", userHandler.UpdateUserPassword)
-		api.DELETE("/users", userHandler.DeleteUser)
+		api.GET("/users/all", middleware.JWTAuthMiddleware(), middleware.AdminOnlyMiddleware(), userHandler.GetUsers)
+		api.GET("/users", middleware.JWTAuthMiddleware(), userHandler.GetUser)
+		api.PUT("/users", middleware.JWTAuthMiddleware(), userHandler.UpdateUserInfo)
+		api.PUT("/users/password", middleware.JWTAuthMiddleware(), userHandler.UpdateUserPassword)
+		api.DELETE("/users", middleware.JWTAuthMiddleware(), middleware.AdminOnlyMiddleware(), userHandler.DeleteUser)
+		api.GET("/users/:uid/devices", middleware.JWTAuthMiddleware(), userHandler.GetUserDevices)
 
-		// // device相关接口
-		// api.POST("/devices", createDevice)
-		// api.GET("/devices/:dev_id", getDevice)
-		// api.PUT("/devices/:dev_id", updateDevice)
-		// api.DELETE("/devices/:dev_id", deleteDevice)
+		// device相关接口
+		deviceHandler := handler.NewDeviceHandler()
+		api.POST("/devices", middleware.JWTAuthMiddleware(), deviceHandler.CreateDevice)
+		api.GET("/devices", middleware.JWTAuthMiddleware(), deviceHandler.GetDevices)
+		api.GET("/devices/:dev_id", middleware.JWTAuthMiddleware(), deviceHandler.GetDevice)
+		api.PUT("/devices/:dev_id", middleware.JWTAuthMiddleware(), deviceHandler.UpdateDevice)
+		api.DELETE("/devices/:dev_id", middleware.JWTAuthMiddleware(), deviceHandler.DeleteDevice)
+		api.GET("/devices/statistics", middleware.JWTAuthMiddleware(), deviceHandler.GetDeviceStatistics)
 
-		// // sensor data相关接口
-		// api.POST("/sensor-data", createSensorData)
-		// api.GET("/sensor-data/:data_id", getSensorData)
+		// 设备用户绑定相关接口
+		deviceUserHandler := handler.NewDeviceUserHandler()
+		api.POST("/devices/:dev_id/users", middleware.JWTAuthMiddleware(), deviceUserHandler.BindDeviceUser)
+		api.GET("/devices/:dev_id/users", middleware.JWTAuthMiddleware(), deviceUserHandler.GetDeviceUsers)
+		api.PUT("/devices/:dev_id/users/:uid", middleware.JWTAuthMiddleware(), deviceUserHandler.UpdateDeviceUser)
+		api.DELETE("/devices/:dev_id/users/:uid", middleware.JWTAuthMiddleware(), deviceUserHandler.UnbindDeviceUser)
 
+		// sensor data相关接口
+		sensorDataHandler := handler.NewSensorDataHandler()
+		api.POST("/device/:dev_id/data", sensorDataHandler.CreateSensorData)
+		api.GET("/device/data", sensorDataHandler.GetSensorData)
+		api.GET("/device/:dev_id/data/statistic", sensorDataHandler.GetSensorDataStatistic)
+		api.DELETE("/device/:dev_id/data/:data_id", sensorDataHandler.DeleteSensorData)
 
-		// // warning info相关接口
-		// api.POST("/warning-info", createWarningInfo)
-		// api.GET("/warning-info/:alert_id", getWarningInfo)
-		// api.PUT("/warning-info/:alert_id", updateWarningInfo)
-		// api.DELETE("/warning-info/:alert_id", deleteWarningInfo)
+		// warning info相关接口
+		warningHandler := handler.NewWarningInfoHandler()
+		api.POST("/warning_info", warningHandler.CreateWarningInfo)
+		api.GET("/warning_info", warningHandler.GetWarningInfoList)
+		api.GET("/warning_info/:alert_id", warningHandler.GetWarningInfo)
+		api.PUT("/warning_info/:alert_id", warningHandler.UpdateWarningInfo)
+		api.DELETE("/warning_info/:alert_id", warningHandler.DeleteWarningInfo)
 
-		// // metadata相关接口
-		// api.POST("/metadata", createMetadata)
-		// api.GET("/metadata/:data_id", getMetadata)
-
-		// // 日志相关接口
-		// api.GET("/logs", getLogs)
-		// api.GET("/logs/:log_id", getLog)
-		// api.DELETE("/logs/:log_id", deleteLog)
-
-		// // 系统相关接口
-		// api.GET("/system/statistics", getSystemStatistics)
-		// api.GET("/system/logs", getSystemLogs)
-		// api.GET("/system/logs/:log_id", getSystemLog)
-		// api.DELETE("/system/logs/:log_id", deleteSystemLog)
+		// 日志相关接口
+		logHandler := handler.NewLogHandler()
+		api.POST("/logs", logHandler.UploadLog)
+		api.GET("/logs", logHandler.GetLogs)
 	}
 }

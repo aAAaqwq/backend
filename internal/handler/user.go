@@ -91,7 +91,115 @@ func (h *UserHandler) UpdateUserPassword(c *gin.Context) {
 }
 
 func (h *UserHandler) GetUsers(c *gin.Context) {
-	
+	// 获取查询参数
+	page, _ := c.GetQuery("page")
+	pageSize, _ := c.GetQuery("page_size")
+	role, _ := c.GetQuery("role")
+	keyword, _ := c.GetQuery("keyword")
+	sortBy, _ := c.GetQuery("sort_by")
+	sortOrder, _ := c.GetQuery("sort_order")
+
+	// 转换分页参数
+	pageInt, _ := utils.ConvertToInt64(page)
+	if pageInt <= 0 {
+		pageInt = 1
+	}
+	pageSizeInt, _ := utils.ConvertToInt64(pageSize)
+	if pageSizeInt <= 0 {
+		pageSizeInt = 10
+	}
+
+	// 调用服务层获取用户列表
+	users, total, err := h.userService.GetUsers(int(pageInt), int(pageSizeInt), role, keyword, sortBy, sortOrder)
+	if err != nil {
+		logger.L().Error("获取用户列表失败", logger.WithError(err))
+		Error(c, CodeInternalServerError, err.Error())
+		return
+	}
+
+	// 计算总页数
+	totalPages := int64((total + int64(pageSizeInt) - 1) / int64(pageSizeInt))
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	// 返回分页结果
+	Success(c, "获取用户列表成功", gin.H{
+		"items": users,
+		"pagination": gin.H{
+			"page":        pageInt,
+			"page_size":   pageSizeInt,
+			"total":       total,
+			"total_pages": totalPages,
+		},
+	})
+}
+
+func (h *UserHandler) GetUserDevices(c *gin.Context) {
+	// 获取路径参数
+	uidStr := c.Param("uid")
+	uid, err := utils.ConvertToInt64(uidStr)
+	if err != nil {
+		Error(c, CodeBadRequest, "无效的用户ID")
+		return
+	}
+
+	// 获取查询参数
+	page, _ := c.GetQuery("page")
+	pageSize, _ := c.GetQuery("page_size")
+	devType, _ := c.GetQuery("dev_type")
+	devStatusStr, _ := c.GetQuery("dev_status")
+	permissionLevel, _ := c.GetQuery("permission_level")
+	isActiveStr, _ := c.GetQuery("is_active")
+
+	// 转换分页参数
+	pageInt, _ := utils.ConvertToInt64(page)
+	if pageInt <= 0 {
+		pageInt = 1
+	}
+	pageSizeInt, _ := utils.ConvertToInt64(pageSize)
+	if pageSizeInt <= 0 {
+		pageSizeInt = 10
+	}
+
+	// 转换可选参数
+	var devStatus *int
+	if !utils.IsEmpty(devStatusStr) {
+		status, _ := utils.ConvertToInt64(devStatusStr)
+		statusInt := int(status)
+		devStatus = &statusInt
+	}
+
+	var isActive *bool
+	if !utils.IsEmpty(isActiveStr) {
+		active, _ := utils.ConvertToBool(isActiveStr)
+		isActive = &active
+	}
+
+	// 调用服务层获取用户设备列表
+	devices, total, err := h.userService.GetUserDevices(uid, int(pageInt), int(pageSizeInt), devType, devStatus, permissionLevel, isActive)
+	if err != nil {
+		logger.L().Error("获取用户设备列表失败", logger.WithError(err))
+		Error(c, CodeInternalServerError, err.Error())
+		return
+	}
+
+	// 计算总页数
+	totalPages := int64((total + int64(pageSizeInt) - 1) / int64(pageSizeInt))
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	// 返回分页结果
+	Success(c, "获取用户设备列表成功", gin.H{
+		"items": devices,
+		"pagination": gin.H{
+			"page":        pageInt,
+			"page_size":   pageSizeInt,
+			"total":       total,
+			"total_pages": totalPages,
+		},
+	})
 }
 
 func (h *UserHandler) DeleteUser(c *gin.Context) {
@@ -110,11 +218,11 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 }
 
 func (h *UserHandler) GetUser(c *gin.Context) {
-	user:=&model.User{}
+	user := &model.User{}
 	uid, _ := c.GetQuery("uid")
 	user.UID, _ = utils.ConvertToInt64(uid)
-	user.Email,_ = c.GetQuery("email")
-	user.Username,_ = c.GetQuery("username")
+	user.Email, _ = c.GetQuery("email")
+	user.Username, _ = c.GetQuery("username")
 
 	if utils.IsEmpty(user.UID) && utils.IsEmpty(user.Email) && utils.IsEmpty(user.Username) {
 		Error(c, CodeBadRequest, "uid or email or username is required")
@@ -128,10 +236,5 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 		return
 	}
 
-	Success(c, "获取用户成功",user)
+	Success(c, "获取用户成功", user)
 }
-
-func (h *UserHandler) GetUserDevices(c *gin.Context) {
-	
-}
-

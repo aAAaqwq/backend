@@ -7,6 +7,7 @@ import (
 	"backend/internal/db/mysql"
 	"backend/internal/route"
 	"backend/pkg/logger"
+	"backend/pkg/utils"
 	"context"
 	"fmt"
 	"net/http"
@@ -38,10 +39,10 @@ func InitClient(cfg *config.Config) error {
 	AppClient = &Client{}
 
 	// 4. 初始化InfluxDB客户端
-	// AppClient.InfluxDB, err = influxdb.GetInfluxDBClient(cfg.InfluxDB)
-	// if err != nil {
-	// 	return fmt.Errorf("初始化 InfluxDB 失败: %v", err)
-	// }
+	AppClient.InfluxDB, err = influxdb.GetInfluxDBClient(cfg.InfluxDB)
+	if err != nil {
+		return fmt.Errorf("初始化 InfluxDB 失败: %v", err)
+	}
 
 	// 5. 初始化MinIO客户端
 	AppClient.MinIO, err = minio.GetMinIOClient(cfg.MinIO)
@@ -57,6 +58,10 @@ func InitClient(cfg *config.Config) error {
 
 	logger.L().Info("所有客户端初始化成功")
 	return nil
+}
+
+func GetClient() *Client {
+	return AppClient
 }
 
 func CloseClient() {
@@ -80,15 +85,21 @@ func CloseClient() {
 }
 
 func Init(cfg *config.Config) error {
-	
+
 	// 初始化客户端
 	if err := InitClient(cfg); err != nil {
 		return fmt.Errorf("初始化客户端失败: %v", err)
 	}
+	defer CloseClient()
+
+	// 初始化JWT密钥
+	utils.LoadJWTSecret(cfg)
+
+	// 设置Gin模式
+	gin.SetMode(cfg.Server.Mode)
 
 	return nil
 }
-
 
 func main() {
 	//  初始化配置
@@ -98,15 +109,13 @@ func main() {
 		os.Exit(1)
 	}
 	logger.L().Info("配置加载成功", logger.WithAny("cfg", cfg))
-	
-	// 初始化客户端
-	if err := InitClient(cfg); err != nil {
-		logger.L().Error("初始化客户端失败", logger.WithError(err))
+
+	// 初始化
+	if err := Init(cfg); err != nil {
+		logger.L().Error("初始化失败", logger.WithError(err))
 		os.Exit(1)
 	}
-	defer CloseClient()
 
-	gin.SetMode(cfg.Server.Mode)
 	// 默认配置
 	r := gin.Default()
 	//注册中间件
@@ -118,31 +127,31 @@ func main() {
 	// 启动服务器
 	Addr := cfg.Server.Host + ":" + cfg.Server.Port
 	srv := &http.Server{
-        Addr:    Addr, 
-        Handler: r,
-    }
+		Addr:    Addr,
+		Handler: r,
+	}
 
-    //  在协程中启动服务器
-    go func() {
-        if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-            logger.L().Fatal("服务器启动失败", logger.WithError(err))
-        }
-    }()
+	//  在协程中启动服务器
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.L().Fatal("服务器启动失败", logger.WithError(err))
+		}
+	}()
 	logger.L().Info("服务器启动成功", logger.WithString("Listening ON:", Addr))
-	
-    // 监听操作系统中断信号
-    quit := make(chan os.Signal, 1) // 建议使用带缓冲的通道
-    signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-    <-quit // 阻塞，直到收到信号
-    logger.L().Info("开始优雅关闭服务器...")
 
-    // 设置一个优雅关闭的超时时间
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
+	// 监听操作系统中断信号
+	quit := make(chan os.Signal, 1) // 建议使用带缓冲的通道
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit // 阻塞，直到收到信号
+	logger.L().Info("开始优雅关闭服务器...")
 
-    //  执行优雅关闭
-    if err := srv.Shutdown(ctx); err != nil {
-        logger.L().Fatal("服务器强制关闭", logger.WithError(err))
-    }
-    logger.L().Info("服务器已优雅关闭")
+	// 设置一个优雅关闭的超时时间
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	//  执行优雅关闭
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.L().Fatal("服务器强制关闭", logger.WithError(err))
+	}
+	logger.L().Info("服务器已优雅关闭")
 }
