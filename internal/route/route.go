@@ -39,13 +39,13 @@ func RegisterRoutes(router *gin.Engine) {
 
 		// sensor data相关接口
 		sensorDataHandler := handler.NewSensorDataHandler()
-		api.POST("/device/data/timeseries", sensorDataHandler.UploadSeriesData)
-		api.POST("/device/data/file", sensorDataHandler.UploadFileData)
+		api.POST("/device/data", sensorDataHandler.UploadSensorData) // 统一上传接口，根据data_type判断是时序数据还是文件数据
 		api.GET("/device/data/timeseries", sensorDataHandler.GetSeriesData)
+		api.DELETE("/device/data/timeseries", sensorDataHandler.DeleteSeriesData)
+		api.GET("/device/data/statistic", sensorDataHandler.GetSensorDataStatistic)
 		api.GET("/device/data/file/list", sensorDataHandler.GetFileList)
 		api.GET("/device/data/file/download", sensorDataHandler.DownloadFile)
-		api.GET("/device/:dev_id/data/statistic", sensorDataHandler.GetSensorDataStatistic)
-		api.DELETE("/device/:dev_id/data/:data_id", sensorDataHandler.DeleteSensorData)
+		api.DELETE("/device/data/file", sensorDataHandler.DeleteFileData)
 
 		// warning info相关接口
 		warningHandler := handler.NewWarningInfoHandler()

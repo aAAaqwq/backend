@@ -1,113 +1,115 @@
 package utils
 
+import "strings"
+
 var ExtensionMapping = map[string]string{
-	"image/jpeg": "jpg",
-	"image/png": "png",
-	"image/gif": "gif",
-	"image/webp": "webp",
-	"image/svg+xml": "svg",
-	"image/tiff": "tiff",
-	"image/ico": "ico",
-	"image/bmp": "bmp",
-	"image/x-icon": "ico",
-	"image/x-ms-bmp": "bmp",
-	"video/mp4": "mp4",
-	"audio/mpeg": "mp3",
-	"audio/wav": "wav",
-	"audio/ogg": "ogg",
-	"audio/flac": "flac",
-	"audio/aac": "aac",
-	"audio/m4a": "m4a",
-	"video/m4v": "m4v",
-	"video/mov": "mov",
-	"video/avi": "avi",
-	"video/wmv": "wmv",
-	"video/mkv": "mkv",
-	"video/webm": "webm",
-	"video/flv": "flv",
-	"video/m3u8": "m3u8",
-	"video/ts": "ts",
-	"video/m2ts": "m2ts",
-	"video/m2t": "m2t",
-	"application/pdf": "pdf",
+	"image/jpeg":         "jpg",
+	"image/png":          "png",
+	"image/gif":          "gif",
+	"image/webp":         "webp",
+	"image/svg+xml":      "svg",
+	"image/tiff":         "tiff",
+	"image/ico":          "ico",
+	"image/bmp":          "bmp",
+	"image/x-icon":       "ico",
+	"image/x-ms-bmp":     "bmp",
+	"video/mp4":          "mp4",
+	"audio/mpeg":         "mp3",
+	"audio/wav":          "wav",
+	"audio/ogg":          "ogg",
+	"audio/flac":         "flac",
+	"audio/aac":          "aac",
+	"audio/m4a":          "m4a",
+	"video/m4v":          "m4v",
+	"video/mov":          "mov",
+	"video/avi":          "avi",
+	"video/wmv":          "wmv",
+	"video/mkv":          "mkv",
+	"video/webm":         "webm",
+	"video/flv":          "flv",
+	"video/m3u8":         "m3u8",
+	"video/ts":           "ts",
+	"video/m2ts":         "m2ts",
+	"video/m2t":          "m2t",
+	"application/pdf":    "pdf",
 	"application/msword": "doc",
 	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
 	"application/vnd.ms-excel": "xls",
-	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-	"application/vnd.ms-powerpoint": "ppt",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         "xlsx",
+	"application/vnd.ms-powerpoint":                                             "ppt",
 	"application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
-	"text/plain": "txt",
-	"text/csv": "csv",
-	"application/json": "json",
-	"application/xml": "xml",
-	"text/html": "html",
-	"text/css": "css",
+	"text/plain":             "txt",
+	"text/csv":               "csv",
+	"application/json":       "json",
+	"application/xml":        "xml",
+	"text/html":              "html",
+	"text/css":               "css",
 	"application/javascript": "js",
-	"application/php": "php",
-	"application/zip": "zip",
-	"application/rar": "rar",
-	"application/7z": "7z",
-	"application/tar": "tar",
-	"application/gzip": "gz",
-	"application/bzip2": "bz2",
-	"application/xz": "xz",
-	"application/iso": "iso",
-	"application/dmg": "dmg",
+	"application/php":        "php",
+	"application/zip":        "zip",
+	"application/rar":        "rar",
+	"application/7z":         "7z",
+	"application/tar":        "tar",
+	"application/gzip":       "gz",
+	"application/bzip2":      "bz2",
+	"application/xz":         "xz",
+	"application/iso":        "iso",
+	"application/dmg":        "dmg",
 }
 
 var ContentTypeMapping = map[string]string{
-	"jpg": "image/jpeg",
-	"png": "image/png",
-	"gif": "image/gif",
-	"webp": "image/webp",
-	"svg": "image/svg+xml",
-	"tiff": "image/tiff",
-	"ico": "image/ico",
-	"bmp": "image/bmp",
-	"x-icon": "image/x-icon",
+	"jpg":      "image/jpeg",
+	"png":      "image/png",
+	"gif":      "image/gif",
+	"webp":     "image/webp",
+	"svg":      "image/svg+xml",
+	"tiff":     "image/tiff",
+	"ico":      "image/ico",
+	"bmp":      "image/bmp",
+	"x-icon":   "image/x-icon",
 	"x-ms-bmp": "image/x-ms-bmp",
-	"mp4": "video/mp4",
-	"mp3": "audio/mpeg",
-	"wav": "audio/wav",
-	"ogg": "audio/ogg",
-	"flac": "audio/flac",
-	"aac": "audio/aac",
-	"m4a": "audio/m4a",
-	"m4v": "video/m4v",
-	"mov": "video/mov",
-	"avi": "video/avi",
-	"wmv": "video/wmv",
-	"mkv": "video/mkv",
-	"webm": "video/webm",
-	"flv": "video/flv",
-	"m3u8": "video/m3u8",
-	"ts": "video/ts",
-	"m2ts": "video/m2ts",
-	"m2t": "video/m2t",
-	"pdf": "application/pdf",
-	"doc": "application/msword",
-	"docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-	"xls": "application/vnd.ms-excel",
-	"xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-	"ppt": "application/vnd.ms-powerpoint",
-	"pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-	"txt": "text/plain",
-	"csv": "text/csv",
-	"json": "application/json",
-	"xml": "application/xml",
-	"html": "text/html",
-	"css": "text/css",
-	"js": "application/javascript",
-	"php": "application/php",
-	"zip": "application/zip",
-	"rar": "application/rar",
-	"7z": "application/7z",
-	"tar": "application/tar",
-	"gz": "application/gzip",
-	"bz2": "application/bzip2",
-	"xz": "application/xz",
-	"iso": "application/iso",
-	"dmg": "application/dmg",
+	"mp4":      "video/mp4",
+	"mp3":      "audio/mpeg",
+	"wav":      "audio/wav",
+	"ogg":      "audio/ogg",
+	"flac":     "audio/flac",
+	"aac":      "audio/aac",
+	"m4a":      "audio/m4a",
+	"m4v":      "video/m4v",
+	"mov":      "video/mov",
+	"avi":      "video/avi",
+	"wmv":      "video/wmv",
+	"mkv":      "video/mkv",
+	"webm":     "video/webm",
+	"flv":      "video/flv",
+	"m3u8":     "video/m3u8",
+	"ts":       "video/ts",
+	"m2ts":     "video/m2ts",
+	"m2t":      "video/m2t",
+	"pdf":      "application/pdf",
+	"doc":      "application/msword",
+	"docx":     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	"xls":      "application/vnd.ms-excel",
+	"xlsx":     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	"ppt":      "application/vnd.ms-powerpoint",
+	"pptx":     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	"txt":      "text/plain",
+	"csv":      "text/csv",
+	"json":     "application/json",
+	"xml":      "application/xml",
+	"html":     "text/html",
+	"css":      "text/css",
+	"js":       "application/javascript",
+	"php":      "application/php",
+	"zip":      "application/zip",
+	"rar":      "application/rar",
+	"7z":       "application/7z",
+	"tar":      "application/tar",
+	"gz":       "application/gzip",
+	"bz2":      "application/bzip2",
+	"xz":       "application/xz",
+	"iso":      "application/iso",
+	"dmg":      "application/dmg",
 }
 
 // GetExtension 根据contentType获取文件扩展名
@@ -118,4 +120,50 @@ func GetExtension(contentType string) string {
 // GetContentType 根据文件扩展名获取contentType
 func GetContentType(extension string) string {
 	return ContentTypeMapping[extension]
+}
+
+// GetContentTypeByFilePath 根据文件路径获取contentType
+func GetContentTypeByFilePath(filePath string) string {
+	ext := getExtensionFromPath(filePath)
+	if contentType := GetContentType(ext); contentType != "" {
+		return contentType
+	}
+	return "application/octet-stream"
+}
+
+// GetBucketNameByFilePath 根据文件路径推断bucket名称
+func GetBucketNameByFilePath(filePath string) string {
+	ext := getExtensionFromPath(filePath)
+	contentType := GetContentType(ext)
+	if contentType == "" {
+		return "file"
+	}
+
+	// 根据content type前缀判断bucket
+	if strings.HasPrefix(contentType, "image/") {
+		return "image"
+	}
+	if strings.HasPrefix(contentType, "video/") {
+		return "video"
+	}
+	if strings.HasPrefix(contentType, "audio/") {
+		return "audio"
+	}
+	return "file"
+}
+
+// getExtensionFromPath 从文件路径提取扩展名
+func getExtensionFromPath(filePath string) string {
+	for i := len(filePath) - 1; i >= 0; i-- {
+		if filePath[i] == '.' {
+			if i < len(filePath)-1 {
+				return filePath[i+1:]
+			}
+			return ""
+		}
+		if filePath[i] == '/' || filePath[i] == '\\' {
+			break
+		}
+	}
+	return ""
 }

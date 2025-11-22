@@ -6,6 +6,7 @@ import (
 	"backend/pkg/utils"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 )
 
 type MetadataRepository struct{}
@@ -17,12 +18,19 @@ func NewMetadataRepository() *MetadataRepository {
 // CreateMetadata 创建元数据
 func (r *MetadataRepository) CreateMetadata(metadata *model.Metadata) error {
 	extraDataJSON, _ := json.Marshal(metadata.ExtraData)
-	query := `INSERT INTO metadata (data_id, dev_id, uid, data_type, extra_data, timestamp) 
-		VALUES (?, ?, ?, ?, ?, ?)`
+
+	// 将timestamp字符串转换为int64
+	timestamp, _ := utils.ConvertToInt64(metadata.Timestamp)
+	if timestamp == 0 {
+		timestamp = 0 // 如果转换失败，使用0，由service层处理
+	}
+
+	query := `INSERT INTO metadata (data_id, dev_id, uid, data_type, quality_score, extra_data, timestamp) 
+		VALUES (?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := mysql.MysqlCli.Client.Exec(query,
-		metadata.DataID, metadata.DevID, metadata.UID, metadata.DataType,
-		string(extraDataJSON), metadata.Timestamp)
+		metadata.DataID, metadata.DevID, metadata.UID, metadata.DataType, metadata.QualityScore,
+		string(extraDataJSON), timestamp)
 	return err
 }
 
@@ -30,16 +38,21 @@ func (r *MetadataRepository) CreateMetadata(metadata *model.Metadata) error {
 func (r *MetadataRepository) GetMetadata(dataID int64) (*model.Metadata, error) {
 	metadata := &model.Metadata{}
 	var extraDataJSON sql.NullString
+	var timestampInt int64
 
-	query := `SELECT data_id, dev_id, uid, data_type, extra_data, timestamp 
+	query := `SELECT data_id, dev_id, uid, data_type, quality_score, extra_data, timestamp 
 		FROM metadata WHERE data_id = ?`
 
 	err := mysql.MysqlCli.Client.QueryRow(query, dataID).Scan(
-		&metadata.DataID, &metadata.DevID, &metadata.UID, &metadata.DataType, &extraDataJSON, &metadata.Timestamp)
+		&metadata.DataID, &metadata.DevID, &metadata.UID, &metadata.DataType,
+		&metadata.QualityScore, &extraDataJSON, &timestampInt)
 
 	if err != nil {
 		return nil, err
 	}
+
+	// 将int64转换为字符串
+	metadata.Timestamp = fmt.Sprintf("%d", timestampInt)
 
 	if extraDataJSON.Valid {
 		json.Unmarshal([]byte(extraDataJSON.String), &metadata.ExtraData)
@@ -50,13 +63,21 @@ func (r *MetadataRepository) GetMetadata(dataID int64) (*model.Metadata, error) 
 
 // GetMetadataList 获取元数据列表（分页）
 func (r *MetadataRepository) GetMetadataList(page, pageSize int, dataType string, startTime, endTime *int64,
-	minQuality, maxQuality *float64, keyword, sortBy, sortOrder string) ([]*model.Metadata, int64, error) {
+	minQuality, maxQuality *float64, keyword, sortBy, sortOrder string, devID, uid int64) ([]*model.Metadata, int64, error) {
 	whereClause := "WHERE 1=1"
 	args := []interface{}{}
 
 	if !utils.IsEmpty(dataType) {
 		whereClause += " AND data_type = ?"
 		args = append(args, dataType)
+	}
+	if devID > 0 {
+		whereClause += " AND dev_id = ?"
+		args = append(args, devID)
+	}
+	if uid > 0 {
+		whereClause += " AND uid = ?"
+		args = append(args, uid)
 	}
 	if startTime != nil {
 		whereClause += " AND timestamp >= ?"
@@ -102,7 +123,7 @@ func (r *MetadataRepository) GetMetadataList(page, pageSize int, dataType string
 	}
 
 	// 查询数据
-	query := `SELECT data_id, dev_id, uid, data_type, storage_route, quality_score, extra_data, timestamp, file_path 
+	query := `SELECT data_id, dev_id, uid, data_type, quality_score, extra_data, timestamp 
 		FROM metadata ` + whereClause + " " + orderClause + " " + limitClause
 
 	rows, err := mysql.MysqlCli.Client.Query(query, args...)
@@ -115,13 +136,17 @@ func (r *MetadataRepository) GetMetadataList(page, pageSize int, dataType string
 	for rows.Next() {
 		metadata := &model.Metadata{}
 		var extraDataJSON sql.NullString
+		var timestampInt int64
 
 		err := rows.Scan(
 			&metadata.DataID, &metadata.DevID, &metadata.UID, &metadata.DataType,
-			&extraDataJSON, &metadata.Timestamp)
+			&metadata.QualityScore, &extraDataJSON, &timestampInt)
 		if err != nil {
 			return nil, 0, err
 		}
+
+		// 将int64转换为字符串
+		metadata.Timestamp = fmt.Sprintf("%d", timestampInt)
 
 		if extraDataJSON.Valid {
 			json.Unmarshal([]byte(extraDataJSON.String), &metadata.ExtraData)
@@ -140,13 +165,27 @@ func (r *MetadataRepository) DeleteMetadata(dataID int64) error {
 }
 
 // GetMetadataStatistics 获取元数据统计信息
-func (r *MetadataRepository) GetMetadataStatistics(devID int64) (map[string]interface{}, error) {
+func (r *MetadataRepository) GetMetadataStatistics(devID, uid int64, dataType string) (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
+
+	// 构建WHERE条件
+	whereClause := "WHERE dev_id = ?"
+	args := []interface{}{devID}
+
+	if uid > 0 {
+		whereClause += " AND uid = ?"
+		args = append(args, uid)
+	}
+
+	if !utils.IsEmpty(dataType) {
+		whereClause += " AND data_type = ?"
+		args = append(args, dataType)
+	}
 
 	// 查询总数
 	var total int64
-	query := "SELECT COUNT(*) FROM metadata WHERE dev_id = ?"
-	err := mysql.MysqlCli.Client.QueryRow(query, devID).Scan(&total)
+	query := "SELECT COUNT(*) FROM metadata " + whereClause
+	err := mysql.MysqlCli.Client.QueryRow(query, args...).Scan(&total)
 	if err != nil {
 		return nil, err
 	}
@@ -154,8 +193,8 @@ func (r *MetadataRepository) GetMetadataStatistics(devID int64) (map[string]inte
 
 	// 查询异常数据数量（quality_score < 30）
 	var abnormal int64
-	query = "SELECT COUNT(*) FROM metadata WHERE dev_id = ? AND quality_score < 30"
-	err = mysql.MysqlCli.Client.QueryRow(query, devID).Scan(&abnormal)
+	query = "SELECT COUNT(*) FROM metadata " + whereClause + " AND quality_score < 30"
+	err = mysql.MysqlCli.Client.QueryRow(query, args...).Scan(&abnormal)
 	if err != nil {
 		return nil, err
 	}
