@@ -35,7 +35,7 @@ func (h *DeviceHandler) CreateDevice(c *gin.Context) {
 	SuccessWithCode(c, 201, "创建设备成功", device)
 }
 
-// GetDevices 获取设备列表
+// GetDevices 获取设备列表:用户显示自己所有设备，管理员显示所有设备
 func (h *DeviceHandler) GetDevices(c *gin.Context) {
 	page, _ := c.GetQuery("page")
 	pageSize, _ := c.GetQuery("page_size")

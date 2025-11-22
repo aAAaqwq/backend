@@ -9,23 +9,29 @@ const (
 	DataTypeSeries = "series"
 )
 
-type SensorData struct{
-	DataID int64 `json:"data_id"`
-    SeriesData SeriesData `json:"series_data"`
-    FileData FileData `json:"file_data"`
+type SeriesData struct{
+    Points []Point `json:"points"`
 }
 
-
-type SeriesData struct{
+type Point struct{
+    Measurement string `json:"measurement"`
+    Tags map[string]string `json:"tags"`
+    Fields map[string]interface{} `json:"fields"`
     Timestamp time.Time `json:"timestamp"`
-    Value float64 `json:"value"`
 }
 
 type FileData struct{
-	FileID int64 `json:"file_id"`
 	FilePath string `json:"file_path"`
-    FileName string `json:"file_name"`
-    FileType string `json:"file_type"`  // video, audio, image
-    FileSize int64 `json:"file_size"`
-    FileData string `json:"file_data"`
+    BucketName string `json:"bucket_name"`
+    BucketKey string `json:"bucket_key"`
 }
+
+type FileList struct{
+    BucketKey string `json:"bucket_key"`
+    PreviewUrl string `json:"preview_url"`
+	Name string `json:"file_name"`
+	ContentType string `json:"content_type"`
+	LastModified time.Time `json:"last_modified"`
+	Size int64 `json:"size"`
+}
+

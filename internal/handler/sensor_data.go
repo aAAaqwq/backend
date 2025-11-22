@@ -17,34 +17,101 @@ func NewSensorDataHandler() *SensorDataHandler {
 	return &SensorDataHandler{sensorDataService: service.NewSensorDataService()}
 }
 
-// CreateSensorData 上传传感器数据
-func (h *SensorDataHandler) CreateSensorData(c *gin.Context) {
-	devIDStr := c.Param("dev_id")
-	devID, err := utils.ConvertToInt64(devIDStr)
-	if err != nil {
-		Error(c, CodeBadRequest, "无效的设备ID")
-		return
-	}
+// UploadSeriesData 上传传感器时序数据
+func (h *SensorDataHandler) UploadSeriesData(c *gin.Context) {
 
 	req := &model.Metadata{}
 	if err := c.ShouldBindJSON(req); err != nil {
 		Error(c, CodeBadRequest, err.Error())
 		return
 	}
+	
+	// 上传元数据
+	err := h.sensorDataService.UploadMetadata(req)
+	if err != nil {
+		logger.L().Error("上传传感器元数据失败", logger.WithError(err))
+		Error(c, CodeInternalServerError, err.Error())
+		return
+	}
+	// 上传时序数据
+	err = h.sensorDataService.UploadSeriesData(req)
+	if err != nil {
+		logger.L().Error("上传传感器时序数据失败", logger.WithError(err))
+		Error(c, CodeInternalServerError, err.Error())
+		return
+	}	
 
-	req.DevID = devID
-	metadata, err := h.sensorDataService.CreateSensorData(req)
+	SuccessWithCode(c, 201, "上传传感器时序数据成功", nil)
+}
+
+// UploadFileData 上传传感器文件数据
+func (h *SensorDataHandler) UploadFileData(c *gin.Context) {
+	
+	req := &model.Metadata{}
+	if err := c.ShouldBindJSON(req); err != nil {
+		Error(c, CodeBadRequest, err.Error())
+		return
+	}
+	
+	metadata, err := h.sensorDataService.UploadFileData(req)
 	if err != nil {
 		logger.L().Error("上传传感器数据失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())
 		return
 	}
 
-	SuccessWithCode(c, 201, "上传传感器数据成功", metadata)
+	SuccessWithCode(c, 201, "上传传感器文件数据成功", metadata)
 }
 
-// GetSensorData 查询传感器数据
-func (h *SensorDataHandler) GetSensorData(c *gin.Context) {
+// GetFileList 获取传感器文件列表
+func (h *SensorDataHandler) GetFileList(c *gin.Context) {
+
+	page, _ := c.GetQuery("page")
+	pageSize, _ := c.GetQuery("page_size")
+	dataType, _ := c.GetQuery("data_type")
+	devID, _ := c.GetQuery("dev_id")
+	uid, _ := c.GetQuery("uid")
+
+	devIDInt, _ := utils.ConvertToInt64(devID)
+	uidInt, _ := utils.ConvertToInt64(uid)
+	pageInt, _ := utils.ConvertToInt64(page)
+	pageSizeInt, _ := utils.ConvertToInt64(pageSize)
+	if pageInt <= 0 {
+		pageInt = 1
+	}
+	if pageSizeInt <= 0 {
+		pageSizeInt = 10
+	}
+	
+	fileList,total,err := h.sensorDataService.GetFileList(int(pageInt), int(pageSizeInt), dataType, devIDInt, uidInt)
+	if err != nil {
+		logger.L().Error("获取传感器文件列表失败", logger.WithError(err))
+		Error(c, CodeInternalServerError, err.Error())
+		return
+	}
+
+	Success(c, "获取传感器文件列表成功", fileList)
+}
+
+// DownloadFile 下载传感器数据文件
+func (h *SensorDataHandler) DownloadFile(c *gin.Context) {
+	bucketKey := c.Param("bucket_key")
+	bucketName:= c.Param("bucket_name")
+
+	downloadUrl,err := h.sensorDataService.DownloadFile(bucketKey, bucketName)
+	if err != nil {
+		logger.L().Error("下载传感器文件失败", logger.WithError(err))
+		Error(c, CodeInternalServerError, err.Error())
+		return
+	}
+
+	Success(c, "获取文件下载URL成功", gin.H{
+		"download_url": downloadUrl,
+	})
+}
+
+// GetSeriesData 查询传感器时序数据
+func (h *SensorDataHandler) GetSeriesData(c *gin.Context) {
 	page, _ := c.GetQuery("page")
 	pageSize, _ := c.GetQuery("page_size")
 	dataType, _ := c.GetQuery("data_type")

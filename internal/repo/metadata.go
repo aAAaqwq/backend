@@ -17,12 +17,12 @@ func NewMetadataRepository() *MetadataRepository {
 // CreateMetadata 创建元数据
 func (r *MetadataRepository) CreateMetadata(metadata *model.Metadata) error {
 	extraDataJSON, _ := json.Marshal(metadata.ExtraData)
-	query := `INSERT INTO metadata (data_id, dev_id, uid, data_type, storage_route, quality_score, extra_data, timestamp, file_path) 
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO metadata (data_id, dev_id, uid, data_type, extra_data, timestamp) 
+		VALUES (?, ?, ?, ?, ?, ?)`
 
 	_, err := mysql.MysqlCli.Client.Exec(query,
-		metadata.DataID, metadata.DevID, metadata.UID, metadata.DataType, metadata.StorageRoute,
-		metadata.QualityScore, string(extraDataJSON), metadata.Timestamp, metadata.FilePath)
+		metadata.DataID, metadata.DevID, metadata.UID, metadata.DataType,
+		string(extraDataJSON), metadata.Timestamp)
 	return err
 }
 
@@ -31,12 +31,11 @@ func (r *MetadataRepository) GetMetadata(dataID int64) (*model.Metadata, error) 
 	metadata := &model.Metadata{}
 	var extraDataJSON sql.NullString
 
-	query := `SELECT data_id, dev_id, uid, data_type, storage_route, quality_score, extra_data, timestamp, file_path 
+	query := `SELECT data_id, dev_id, uid, data_type, extra_data, timestamp 
 		FROM metadata WHERE data_id = ?`
 
 	err := mysql.MysqlCli.Client.QueryRow(query, dataID).Scan(
-		&metadata.DataID, &metadata.DevID, &metadata.UID, &metadata.DataType, &metadata.StorageRoute,
-		&metadata.QualityScore, &extraDataJSON, &metadata.Timestamp, &metadata.FilePath)
+		&metadata.DataID, &metadata.DevID, &metadata.UID, &metadata.DataType, &extraDataJSON, &metadata.Timestamp)
 
 	if err != nil {
 		return nil, err
@@ -76,7 +75,7 @@ func (r *MetadataRepository) GetMetadataList(page, pageSize int, dataType string
 		args = append(args, *maxQuality)
 	}
 	if !utils.IsEmpty(keyword) {
-		whereClause += " AND (file_path LIKE ? OR storage_route LIKE ?)"
+		whereClause += " AND (file_name LIKE ? OR file_type LIKE ?)"
 		keywordPattern := "%" + keyword + "%"
 		args = append(args, keywordPattern, keywordPattern)
 	}
@@ -118,8 +117,8 @@ func (r *MetadataRepository) GetMetadataList(page, pageSize int, dataType string
 		var extraDataJSON sql.NullString
 
 		err := rows.Scan(
-			&metadata.DataID, &metadata.DevID, &metadata.UID, &metadata.DataType, &metadata.StorageRoute,
-			&metadata.QualityScore, &extraDataJSON, &metadata.Timestamp, &metadata.FilePath)
+			&metadata.DataID, &metadata.DevID, &metadata.UID, &metadata.DataType,
+			&extraDataJSON, &metadata.Timestamp)
 		if err != nil {
 			return nil, 0, err
 		}

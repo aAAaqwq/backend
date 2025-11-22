@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -103,8 +104,8 @@ func GetBucketName(dataType string) string {
 	}
 }
 
-// PutObject 上传文件到MinIO
-func (c *MinIOClient) PutObject(bucketName, objectName string, filePath string) error {
+// UploadFile 上传文件到MinIO
+func (c *MinIOClient) UploadFile(bucketName, objectName string, filePath string, contentType string) error {
 	ctx := context.Background()
 
 	// 检查bucket是否存在
@@ -113,12 +114,15 @@ func (c *MinIOClient) PutObject(bucketName, objectName string, filePath string) 
 		return fmt.Errorf("检查bucket失败: %v", err)
 	}
 	if !exists {
-		return fmt.Errorf("bucket %s 不存在", bucketName)
+		err = c.CreateBucket(bucketName)
+		if err != nil {
+			return fmt.Errorf("Bucket %s 不存在,创建bucket失败: %v", bucketName, err)
+		}
 	}
 
 	// 上传文件
 	_, err = c.Client.FPutObject(ctx, bucketName, objectName, filePath, minio.PutObjectOptions{
-		ContentType: "application/octet-stream",
+		ContentType: contentType,
 	})
 	if err != nil {
 		return fmt.Errorf("上传文件失败: %v", err)
@@ -137,7 +141,10 @@ func (c *MinIOClient) PutObjectFromReader(bucketName, objectName string, reader 
 		return fmt.Errorf("检查bucket失败: %v", err)
 	}
 	if !exists {
-		return fmt.Errorf("bucket %s 不存在", bucketName)
+		err = c.CreateBucket(bucketName)
+		if err != nil {
+			return fmt.Errorf("Bucket %s 不存在,创建bucket失败: %v", bucketName, err)
+		}
 	}
 
 	// 上传文件
@@ -151,16 +158,20 @@ func (c *MinIOClient) PutObjectFromReader(bucketName, objectName string, reader 
 	return nil
 }
 
-// GetObject 从MinIO下载文件到本地
-func (c *MinIOClient) GetObject(bucketName, objectName, filePath string) error {
+// DownloadFile 从MinIO下载文件到本地
+func (c *MinIOClient) DownloadFile(bucketName, objectName, filePath string) (string, error) {
 	ctx := context.Background()
+	
+	// 强制浏览器下载
+	params := url.Values{}
+	params.Add("response-content-disposition", "attachment; filename="+objectName)
 
-	err := c.Client.FGetObject(ctx, bucketName, objectName, filePath, minio.GetObjectOptions{})
+	presignedURL, err := c.Client.PresignedGetObject(ctx, bucketName, objectName, 5*time.Minute, params)
 	if err != nil {
-		return fmt.Errorf("下载文件失败: %v", err)
+		return "", fmt.Errorf("获取下载文件URL失败: %v", err)
 	}
 
-	return nil
+	return presignedURL.String(), nil
 }
 
 // GetObjectAsReader 从MinIO获取文件作为Reader
@@ -206,4 +217,16 @@ func (c *MinIOClient) ListObjects(bucketName string, prefix string, recursive bo
 		Prefix:    prefix,
 		Recursive: recursive,
 	})
+}
+
+// CreateBucket 创建bucket
+func (c *MinIOClient) CreateBucket(bucketName string) error {
+	ctx := context.Background()
+	err := c.Client.MakeBucket(ctx, bucketName, minio.MakeBucketOptions{
+		Region: "us-east-1",
+	})
+	if err != nil {
+		return fmt.Errorf("创建bucket失败: %v", err)
+	}
+	return nil
 }
