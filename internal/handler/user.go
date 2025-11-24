@@ -57,20 +57,24 @@ func (h *UserHandler) Login(c *gin.Context) {
 
 func (h *UserHandler) UpdateUserInfo(c *gin.Context) {
 	// 从请求中获取更新用户信息
-	updateUserReq := &model.User{}
+	updateUserReq := &model.UpdateUserInfoRequest{}
 	if err := c.ShouldBindJSON(updateUserReq); err != nil {
 		Error(c, CodeBadRequest, err.Error())
 		return
 	}
 	// 从上下文获取uid
-	updateUserReq.UID, _ = middleware.GetCurrentUserID(c)
 	if utils.IsEmpty(updateUserReq.UID) {
-		Error(c, CodeBadRequest, "用户ID不能为空")
-		return
+		updateUserReq.UID, _ = middleware.GetCurrentUserID(c)
+	}
+
+	user := &model.User{
+		UID: updateUserReq.UID,
+		Username: updateUserReq.Username,
+		Email: updateUserReq.Email,
 	}
 
 	// 调用服务层更新用户信息
-	if _, err := h.userService.UpdateUserInfo(updateUserReq); err != nil {
+	if _, err := h.userService.UpdateUserInfo(user); err != nil {
 		logger.L().Error("更新用户信息失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())
 		return
