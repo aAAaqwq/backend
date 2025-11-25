@@ -19,7 +19,7 @@ func RegisterRoutes(router *gin.Engine) {
 		api.PUT("/users", middleware.JWTAuthMiddleware(), userHandler.UpdateUserInfo)
 		api.PUT("/users/password", middleware.JWTAuthMiddleware(), userHandler.UpdateUserPassword)
 		api.DELETE("/users", middleware.JWTAuthMiddleware(), middleware.AdminOnlyMiddleware(), userHandler.DeleteUser)
-		api.GET("/users/:uid/devices", middleware.JWTAuthMiddleware(), userHandler.GetUserDevices)
+		api.GET("/users/bind_devices", middleware.JWTAuthMiddleware(), userHandler.GetUserDevices)
 
 		// device相关接口
 		deviceHandler := handler.NewDeviceHandler()
