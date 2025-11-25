@@ -13,8 +13,8 @@ type Device struct {
 	DevName            string                 `json:"dev_name" binding:"required"`
 	DevType            string                 `json:"dev_type" binding:"required"`
 	DevModel           string                 `json:"dev_model"`
-	DevPower           int                    `json:"dev_power" binding:"required"`
-	DevStatus          int                    `json:"dev_status" binding:"required"`
+	DevPower           int                    `json:"dev_power"`
+	DevStatus          int                    `json:"dev_status" oneof:"0 1 2"`
 	FirmwareVersion    string                 `json:"firmware_version"`
 	SamplingFrequency  int                    `json:"sampling_frequency"`
 	DataUploadInterval int                    `json:"data_upload_interval"`

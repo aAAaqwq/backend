@@ -19,14 +19,14 @@ type DeviceUser struct {
 
 // DeviceUserBindingReq 设备用户绑定请求
 type DeviceUserBindingReq struct {
-	UID             int64  `json:"uid" binding:"required"`
-	PermissionLevel string `json:"permission_level" binding:"required"` // 注意：API定义中拼写为permission_levell，这里使用正确的拼写
+	UID             int64  `json:"uid"`
+	PermissionLevel string `json:"permission_level" binding:"oneof=r w rw"`
 }
 
 // DeviceUserUpdateReq 更新设备用户绑定请求
 type DeviceUserUpdateReq struct {
 	PermissionLevel string `json:"permission_level" binding:"required"`
-	IsActive        *bool  `json:"is_active"`
+	IsActive        *bool   `json:"is_active"`
 }
 
 // DeviceUserWithInfo 带用户信息的设备用户绑定
