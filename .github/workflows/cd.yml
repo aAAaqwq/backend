@@ -1,5 +1,6 @@
 name: CI/CD to Docker Hub + Server
 
+
 on:
   push:
     branches: [ main ]
@@ -16,6 +17,7 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    environment: dev
 
     steps:
       - name: Checkout code
