@@ -1,0 +1,68 @@
+name: CI/CD to Docker Hub + Server
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:      # 允许手动触发
+
+env:
+  # === 可配置变量区（仅需在这里改） ===
+  DOCKER_IMAGE_NAME: aaqwqaa/sensor_backend  # 仓库/镜像名
+  DOCKER_CONTAINER_NAME: sensor_backend                    # 服务器上运行的容器名
+  DOCKER_CONTAINER_PORT: "12000"                                 # 容器内部端口
+  HOST_HTTP_PORT: "12000"                                        # 映射到服务器的端口
+  # 如有额外挂载目录/环境变量，可在 Deploy 步骤的 docker run 里加
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE_NAME }}:latest
+          platforms: linux/amd64,linux/arm64  # 如果不需要多架构可以删掉这一行
+
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_SSH_HOST }}
+          username: ${{ secrets.SERVER_SSH_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_SSH_PORT }}
+          script_stop: true
+          script: |
+            set -e
+
+            echo "Pulling latest image..."
+            docker pull ${{ env.DOCKER_IMAGE_NAME }}:latest
+
+            echo "Stopping old container if exists..."
+            docker stop ${{ env.DOCKER_CONTAINER_NAME }} || true
+            docker rm ${{ env.DOCKER_CONTAINER_NAME }} || true
+
+            echo "Starting new container..."
+            docker run -d \
+              --name ${{ env.DOCKER_CONTAINER_NAME }} \
+              --restart unless-stopped \
+              -p ${{ env.HOST_HTTP_PORT }}:${{ env.DOCKER_CONTAINER_PORT }} \
+              ${{ env.DOCKER_IMAGE_NAME }}:latest
