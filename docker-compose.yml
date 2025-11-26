@@ -1,5 +1,15 @@
 name: sensor_data_hub
 services:
+  backend:
+    container_name: server
+    image: aaqwqaa/sensor_backend:latest
+    ports:
+      - 12000:12000
+    volumes:
+      # - ../data:/app/data
+      - ./config/dev.yaml:/app/config/dev.yaml
+    networks:
+      - sensor_data_hub_network
   mysql:
     image: mysql:oraclelinux9
     container_name: mysql

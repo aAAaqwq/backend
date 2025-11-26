@@ -61,8 +61,4 @@ jobs:
             docker rm ${{ env.DOCKER_CONTAINER_NAME }} || true
 
             echo "Starting new container..."
-            docker run -d \
-              --name ${{ env.DOCKER_CONTAINER_NAME }} \
-              --restart unless-stopped \
-              -p ${{ env.HOST_HTTP_PORT }}:${{ env.DOCKER_CONTAINER_PORT }} \
-              ${{ env.DOCKER_IMAGE_NAME }}:latest
+            docker compose up -d
