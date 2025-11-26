@@ -55,12 +55,36 @@ jobs:
           script: |
             set -e
 
-            echo "Pulling latest image..."
-            docker pull ${{ env.DOCKER_IMAGE_NAME }}:latest
+            retry() {
+              local n=1
+              local max=5      # 最大重试次数
+              local delay=10   # 每次间隔秒数
+              while true; do
+                echo "Attempt $n/$max: $*"
+                if "$@"; then
+                  return 0
+                fi
+                if [ "$n" -ge "$max" ]; then
+                  echo "Command failed after $n attempts."
+                  return 1
+                fi
+                n=$((n+1))
+                echo "Retrying in ${delay}s..."
+                sleep "$delay"
+              done
+            }
+            echo "Cleaning up old containers and images..."
+            docker rm -f ${{ env.DOCKER_CONTAINER_NAME }} || true
+            docker rmi -f ${{ env.DOCKER_IMAGE_NAME }}:latest || true
+
+            echo "Pulling latest image (with retry)..."
+            retry docker pull ${{ env.DOCKER_IMAGE_NAME }}:latest
 
             echo "Stopping old container if exists..."
             docker stop ${{ env.DOCKER_CONTAINER_NAME }} || true
             docker rm ${{ env.DOCKER_CONTAINER_NAME }} || true
 
             echo "Starting new container..."
+            cd /srv/backend
+            git pull
             docker compose up -d
