@@ -25,17 +25,15 @@ func RegisterRoutes(router *gin.Engine) {
 		deviceHandler := handler.NewDeviceHandler()
 		api.POST("/devices", middleware.JWTAuthMiddleware(), deviceHandler.CreateDevice)
 		api.GET("/devices", middleware.JWTAuthMiddleware(), deviceHandler.GetDevices)
-		api.GET("/devices/:dev_id", middleware.JWTAuthMiddleware(), deviceHandler.GetDevice)
-		api.PUT("/devices/:dev_id", middleware.JWTAuthMiddleware(), deviceHandler.UpdateDevice)
-		api.DELETE("/devices/:dev_id", middleware.JWTAuthMiddleware(), deviceHandler.DeleteDevice)
+		api.PUT("/devices", middleware.JWTAuthMiddleware(), deviceHandler.UpdateDevice)
+		api.DELETE("/devices", middleware.JWTAuthMiddleware(), deviceHandler.DeleteDevice)
 		api.GET("/devices/statistics", middleware.JWTAuthMiddleware(), deviceHandler.GetDeviceStatistics)
 
 		// 设备用户绑定相关接口
 		deviceUserHandler := handler.NewDeviceUserHandler()
-		api.POST("/devices/:dev_id/users", middleware.JWTAuthMiddleware(), deviceUserHandler.BindDeviceUser)
-		api.GET("/devices/:dev_id/users", middleware.JWTAuthMiddleware(), deviceUserHandler.GetDeviceUsers)
-		api.PUT("/devices/:dev_id/users/:uid", middleware.JWTAuthMiddleware(), deviceUserHandler.UpdateDeviceUser)
-		api.DELETE("/devices/:dev_id/users/:uid", middleware.JWTAuthMiddleware(), deviceUserHandler.UnbindDeviceUser)
+		api.POST("/devices/bind_user", middleware.JWTAuthMiddleware(), deviceUserHandler.BindDeviceUser)
+		api.DELETE("/devices/unbind_user", middleware.JWTAuthMiddleware(), deviceUserHandler.UnbindDeviceUser)
+		api.GET("/devices/bind_users", middleware.JWTAuthMiddleware(), deviceUserHandler.GetDeviceUsers)
 
 		// sensor data相关接口
 		sensorDataHandler := handler.NewSensorDataHandler()

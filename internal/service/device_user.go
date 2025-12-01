@@ -40,8 +40,19 @@ func (s *DeviceUserService) BindDeviceUser(devID int64, req *model.DeviceUserBin
 		return nil, errors.New("普通用户只能将自己绑定到设备")
 	}
 
-	// 验证权限级别
-	if req.PermissionLevel != model.PermissionLevelRead &&
+	// 检查设备已绑定的用户数量（业务规则：一个设备最多绑定3个用户）
+	boundUsers, err := s.deviceUserRepo.GetDeviceUsers(devID)
+	if err != nil {
+		return nil, err
+	}
+	if len(boundUsers) >= 3 {
+		return nil, errors.New("该设备已绑定3个用户，无法继续绑定")
+	}
+
+	// 验证权限级别，如果未提供则默认为rw
+	if req.PermissionLevel == "" {
+		req.PermissionLevel = model.PermissionLevelReadWrite
+	} else if req.PermissionLevel != model.PermissionLevelRead &&
 		req.PermissionLevel != model.PermissionLevelWrite &&
 		req.PermissionLevel != model.PermissionLevelReadWrite {
 		return nil, errors.New("无效的权限级别，应为: r, w, rw")
@@ -51,9 +62,7 @@ func (s *DeviceUserService) BindDeviceUser(devID int64, req *model.DeviceUserBin
 		UID:             req.UID,
 		DevID:           devID,
 		PermissionLevel: req.PermissionLevel,
-		IsActive:        true,
-		BoundAt:         utils.GetCurrentTime(),
-		UpdateAt:        utils.GetCurrentTime(),
+		BindAt:          utils.GetCurrentTime(),
 	}
 
 	err = s.deviceUserRepo.BindDeviceUser(deviceUser)
@@ -110,10 +119,6 @@ func (s *DeviceUserService) UpdateDeviceUser(devID, uid int64, req *model.Device
 	}
 
 	deviceUser.PermissionLevel = req.PermissionLevel
-	if req.IsActive != nil {
-		deviceUser.IsActive = *req.IsActive
-	}
-	deviceUser.UpdateAt = utils.GetCurrentTime()
 
 	err = s.deviceUserRepo.UpdateDeviceUser(deviceUser)
 	if err != nil {

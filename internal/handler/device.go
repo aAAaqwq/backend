@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"backend/internal/middleware"
 	"backend/internal/model"
 	"backend/internal/service"
 	"backend/pkg/logger"
@@ -25,7 +26,17 @@ func (h *DeviceHandler) CreateDevice(c *gin.Context) {
 		return
 	}
 
-	device, err := h.deviceService.CreateDevice(device)
+	// 验证必填字段
+	if device.DevType == "" {
+		Error(c, CodeBadRequest, "dev_type为必填字段")
+		return
+	}
+
+	// 获取当前用户信息
+	currentUID, _ := middleware.GetCurrentUserID(c)
+	role, _ := middleware.GetCurrentUserRole(c)
+
+	device, err := h.deviceService.CreateDevice(device, currentUID, role)
 	if err != nil {
 		logger.L().Error("创建设备失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())
@@ -35,11 +46,12 @@ func (h *DeviceHandler) CreateDevice(c *gin.Context) {
 	SuccessWithCode(c, 201, "创建设备成功", device)
 }
 
-// GetDevices 获取设备列表:用户显示自己所有设备，管理员显示所有设备
+// GetDevices 获取设备列表
+// 普通用户：只能查看自己绑定的设备
+// 管理员：可以查看所有设备
 func (h *DeviceHandler) GetDevices(c *gin.Context) {
 	page, _ := c.GetQuery("page")
 	pageSize, _ := c.GetQuery("page_size")
-	devType, _ := c.GetQuery("dev_type")
 	devStatusStr, _ := c.GetQuery("dev_status")
 	keyword, _ := c.GetQuery("keyword")
 	sortBy, _ := c.GetQuery("sort_by")
@@ -61,7 +73,11 @@ func (h *DeviceHandler) GetDevices(c *gin.Context) {
 		devStatus = &statusInt
 	}
 
-	devices, total, err := h.deviceService.GetDevices(int(pageInt), int(pageSizeInt), devType, devStatus, keyword, sortBy, sortOrder)
+	// 获取当前用户信息
+	currentUID, _ := middleware.GetCurrentUserID(c)
+	role, _ := middleware.GetCurrentUserRole(c)
+
+	devices, total, err := h.deviceService.GetDevices(int(pageInt), int(pageSizeInt), devStatus, keyword, sortBy, sortOrder, currentUID, role)
 	if err != nil {
 		logger.L().Error("获取设备列表失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())
@@ -84,65 +100,27 @@ func (h *DeviceHandler) GetDevices(c *gin.Context) {
 	})
 }
 
-// GetDevice 获取指定设备
-func (h *DeviceHandler) GetDevice(c *gin.Context) {
-	devIDStr := c.Param("dev_id")
-	devID, err := utils.ConvertToInt64(devIDStr)
-	if err != nil {
-		Error(c, CodeBadRequest, "无效的设备ID")
-		return
-	}
-
-	device, err := h.deviceService.GetDevice(devID)
-	if err != nil {
-		logger.L().Error("获取设备失败", logger.WithError(err))
-		Error(c, CodeNotFound, "设备不存在")
-		return
-	}
-
-	// 获取设备绑定的用户列表
-	deviceUserService := service.NewDeviceUserService()
-	// 从上下文获取当前用户信息（由JWT中间件设置）
-	currentUID, _ := c.Get("uid")
-	currentRole, _ := c.Get("role")
-	var uidInt64 int64
-	var roleStr string
-	if currentUID != nil {
-		uidInt64, _ = currentUID.(int64)
-	}
-	if currentRole != nil {
-		roleStr, _ = currentRole.(string)
-	}
-	boundUsers, err := deviceUserService.GetDeviceUsers(devID, uidInt64, roleStr)
-	if err != nil {
-		// 如果获取绑定用户失败，返回空列表（可能是权限问题）
-		boundUsers = []*model.DeviceUserWithInfo{}
-		logger.L().Warn("获取设备绑定用户失败", logger.WithError(err))
-	}
-
-	Success(c, "获取设备成功", gin.H{
-		"data":        device,
-		"bound_users": boundUsers,
-	})
-}
-
-// UpdateDevice 更新设备
+// UpdateDevice 更新设备信息
+// 普通用户：只能更新有（w或rw）权限的设备
+// 管理员：可以更新所有设备
 func (h *DeviceHandler) UpdateDevice(c *gin.Context) {
-	devIDStr := c.Param("dev_id")
-	devID, err := utils.ConvertToInt64(devIDStr)
-	if err != nil {
-		Error(c, CodeBadRequest, "无效的设备ID")
-		return
-	}
-
 	device := &model.Device{}
 	if err := c.ShouldBindJSON(device); err != nil {
 		Error(c, CodeBadRequest, err.Error())
 		return
 	}
 
-	device.DevID = devID
-	device, err = h.deviceService.UpdateDevice(device)
+	// 验证dev_id
+	if device.DevID == 0 {
+		Error(c, CodeBadRequest, "dev_id不能为空")
+		return
+	}
+
+	// 获取当前用户信息
+	currentUID, _ := middleware.GetCurrentUserID(c)
+	role, _ := middleware.GetCurrentUserRole(c)
+
+	device, err := h.deviceService.UpdateDevice(device, currentUID, role)
 	if err != nil {
 		logger.L().Error("更新设备失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())
@@ -153,15 +131,21 @@ func (h *DeviceHandler) UpdateDevice(c *gin.Context) {
 }
 
 // DeleteDevice 删除设备
+// 普通用户：只能删除有（w或rw）权限的设备
+// 管理员：可以删除所有设备
 func (h *DeviceHandler) DeleteDevice(c *gin.Context) {
-	devIDStr := c.Param("dev_id")
+	devIDStr := c.Query("dev_id")
 	devID, err := utils.ConvertToInt64(devIDStr)
-	if err != nil {
+	if err != nil || devID == 0 {
 		Error(c, CodeBadRequest, "无效的设备ID")
 		return
 	}
 
-	err = h.deviceService.DeleteDevice(devID)
+	// 获取当前用户信息
+	currentUID, _ := middleware.GetCurrentUserID(c)
+	role, _ := middleware.GetCurrentUserRole(c)
+
+	err = h.deviceService.DeleteDevice(devID, currentUID, role)
 	if err != nil {
 		logger.L().Error("删除设备失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())
@@ -172,8 +156,14 @@ func (h *DeviceHandler) DeleteDevice(c *gin.Context) {
 }
 
 // GetDeviceStatistics 获取设备统计信息
+// 普通用户：只统计有权限的设备
+// 管理员：统计所有设备
 func (h *DeviceHandler) GetDeviceStatistics(c *gin.Context) {
-	stats, err := h.deviceService.GetDeviceStatistics()
+	// 获取当前用户信息
+	currentUID, _ := middleware.GetCurrentUserID(c)
+	role, _ := middleware.GetCurrentUserRole(c)
+
+	stats, err := h.deviceService.GetDeviceStatistics(currentUID, role)
 	if err != nil {
 		logger.L().Error("获取设备统计信息失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())

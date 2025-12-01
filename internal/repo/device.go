@@ -17,13 +17,13 @@ func NewDeviceRepository() *DeviceRepository {
 // CreateDevice 创建设备
 func (r *DeviceRepository) CreateDevice(device *model.Device) error {
 	extendedConfigJSON, _ := json.Marshal(device.ExtendedConfig)
-	query := `INSERT INTO device (dev_id, dev_name, dev_type, dev_model, dev_power, dev_status, 
-		firmware_version, sampling_frequency, data_upload_interval, offline_threshold, extended_config, create_at, update_at) 
+	query := `INSERT INTO device (dev_id, dev_name, dev_status, dev_type, dev_power,
+		model, version, sampling_rate, offline_threshold, upload_interval, extended_config, create_at, update_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := mysql.MysqlCli.Client.Exec(query,
-		device.DevID, device.DevName, device.DevType, device.DevModel, device.DevPower, device.DevStatus,
-		device.FirmwareVersion, device.SamplingFrequency, device.DataUploadInterval, device.OfflineThreshold,
+		device.DevID, device.DevName, device.DevStatus, device.DevType, device.DevPower,
+		device.Model, device.Version, device.SamplingRate, device.OfflineThreshold, device.UploadInterval,
 		string(extendedConfigJSON), device.CreateAt, device.UpdateAt)
 	return err
 }
@@ -33,13 +33,13 @@ func (r *DeviceRepository) GetDevice(devID int64) (*model.Device, error) {
 	device := &model.Device{}
 	var extendedConfigJSON sql.NullString
 
-	query := `SELECT dev_id, dev_name, dev_type, dev_model, dev_power, dev_status, 
-		firmware_version, sampling_frequency, data_upload_interval, offline_threshold, extended_config, create_at, update_at 
+	query := `SELECT dev_id, dev_name, dev_status, dev_type, dev_power,
+		model, version, sampling_rate, offline_threshold, upload_interval, extended_config, create_at, update_at
 		FROM device WHERE dev_id = ?`
 
 	err := mysql.MysqlCli.Client.QueryRow(query, devID).Scan(
-		&device.DevID, &device.DevName, &device.DevType, &device.DevModel, &device.DevPower, &device.DevStatus,
-		&device.FirmwareVersion, &device.SamplingFrequency, &device.DataUploadInterval, &device.OfflineThreshold,
+		&device.DevID, &device.DevName, &device.DevStatus, &device.DevType, &device.DevPower,
+		&device.Model, &device.Version, &device.SamplingRate, &device.OfflineThreshold, &device.UploadInterval,
 		&extendedConfigJSON, &device.CreateAt, &device.UpdateAt)
 
 	if err != nil {
@@ -67,7 +67,7 @@ func (r *DeviceRepository) GetDevices(page, pageSize int, devType string, devSta
 		args = append(args, *devStatus)
 	}
 	if !utils.IsEmpty(keyword) {
-		whereClause += " AND (dev_name LIKE ? OR dev_model LIKE ?)"
+		whereClause += " AND (dev_name LIKE ? OR model LIKE ?)"
 		keywordPattern := "%" + keyword + "%"
 		args = append(args, keywordPattern, keywordPattern)
 	}
@@ -94,8 +94,8 @@ func (r *DeviceRepository) GetDevices(page, pageSize int, devType string, devSta
 	}
 
 	// 查询数据
-	query := `SELECT dev_id, dev_name, dev_type, dev_model, dev_power, dev_status, 
-		firmware_version, sampling_frequency, data_upload_interval, offline_threshold, extended_config, create_at, update_at 
+	query := `SELECT dev_id, dev_name, dev_status, dev_type, dev_power,
+		model, version, sampling_rate, offline_threshold, upload_interval, extended_config, create_at, update_at
 		FROM device ` + whereClause + " " + orderClause + " " + limitClause
 
 	rows, err := mysql.MysqlCli.Client.Query(query, args...)
@@ -110,8 +110,8 @@ func (r *DeviceRepository) GetDevices(page, pageSize int, devType string, devSta
 		var extendedConfigJSON sql.NullString
 
 		err := rows.Scan(
-			&device.DevID, &device.DevName, &device.DevType, &device.DevModel, &device.DevPower, &device.DevStatus,
-			&device.FirmwareVersion, &device.SamplingFrequency, &device.DataUploadInterval, &device.OfflineThreshold,
+			&device.DevID, &device.DevName, &device.DevStatus, &device.DevType, &device.DevPower,
+			&device.Model, &device.Version, &device.SamplingRate, &device.OfflineThreshold, &device.UploadInterval,
 			&extendedConfigJSON, &device.CreateAt, &device.UpdateAt)
 		if err != nil {
 			return nil, 0, err
@@ -130,13 +130,13 @@ func (r *DeviceRepository) GetDevices(page, pageSize int, devType string, devSta
 // UpdateDevice 更新设备
 func (r *DeviceRepository) UpdateDevice(device *model.Device) error {
 	extendedConfigJSON, _ := json.Marshal(device.ExtendedConfig)
-	query := `UPDATE device SET dev_name = ?, dev_type = ?, dev_model = ?, dev_power = ?, dev_status = ?, 
-		firmware_version = ?, sampling_frequency = ?, data_upload_interval = ?, offline_threshold = ?, 
+	query := `UPDATE device SET dev_name = ?, dev_status = ?, dev_type = ?, dev_power = ?,
+		model = ?, version = ?, sampling_rate = ?, offline_threshold = ?, upload_interval = ?,
 		extended_config = ?, update_at = ? WHERE dev_id = ?`
 
 	_, err := mysql.MysqlCli.Client.Exec(query,
-		device.DevName, device.DevType, device.DevModel, device.DevPower, device.DevStatus,
-		device.FirmwareVersion, device.SamplingFrequency, device.DataUploadInterval, device.OfflineThreshold,
+		device.DevName, device.DevStatus, device.DevType, device.DevPower,
+		device.Model, device.Version, device.SamplingRate, device.OfflineThreshold, device.UploadInterval,
 		string(extendedConfigJSON), device.UpdateAt, device.DevID)
 	return err
 }
@@ -199,4 +199,86 @@ func (r *DeviceRepository) GetDeviceStatistics() (map[string]interface{}, error)
 	stats["by_type"] = typeStats
 
 	return stats, nil
+}
+
+// GetDevicesByIDs 根据设备ID列表获取设备（支持分页和筛选）
+func (r *DeviceRepository) GetDevicesByIDs(devIDs []int64, page, pageSize int, devStatus *int, keyword, sortBy, sortOrder string) ([]*model.Device, int64, error) {
+	if len(devIDs) == 0 {
+		return []*model.Device{}, 0, nil
+	}
+
+	whereClause := "WHERE dev_id IN ("
+	args := []interface{}{}
+	for i, devID := range devIDs {
+		if i > 0 {
+			whereClause += ","
+		}
+		whereClause += "?"
+		args = append(args, devID)
+	}
+	whereClause += ")"
+
+	if devStatus != nil {
+		whereClause += " AND dev_status = ?"
+		args = append(args, *devStatus)
+	}
+	if !utils.IsEmpty(keyword) {
+		whereClause += " AND (dev_name LIKE ? OR model LIKE ?)"
+		keywordPattern := "%" + keyword + "%"
+		args = append(args, keywordPattern, keywordPattern)
+	}
+
+	if utils.IsEmpty(sortBy) {
+		sortBy = "create_at"
+	}
+	if utils.IsEmpty(sortOrder) {
+		sortOrder = "DESC"
+	}
+	orderClause := "ORDER BY " + sortBy + " " + sortOrder
+
+	offset := (page - 1) * pageSize
+	limitClause := "LIMIT ? OFFSET ?"
+	countArgs := args
+	args = append(args, pageSize, offset)
+
+	// 查询总数
+	var total int64
+	countQuery := "SELECT COUNT(*) FROM device " + whereClause
+	err := mysql.MysqlCli.Client.QueryRow(countQuery, countArgs...).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// 查询数据
+	query := `SELECT dev_id, dev_name, dev_status, dev_type, dev_power,
+		model, version, sampling_rate, offline_threshold, upload_interval, extended_config, create_at, update_at
+		FROM device ` + whereClause + " " + orderClause + " " + limitClause
+
+	rows, err := mysql.MysqlCli.Client.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var devices []*model.Device
+	for rows.Next() {
+		device := &model.Device{}
+		var extendedConfigJSON sql.NullString
+
+		err := rows.Scan(
+			&device.DevID, &device.DevName, &device.DevStatus, &device.DevType, &device.DevPower,
+			&device.Model, &device.Version, &device.SamplingRate, &device.OfflineThreshold, &device.UploadInterval,
+			&extendedConfigJSON, &device.CreateAt, &device.UpdateAt)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		if extendedConfigJSON.Valid {
+			json.Unmarshal([]byte(extendedConfigJSON.String), &device.ExtendedConfig)
+		}
+
+		devices = append(devices, device)
+	}
+
+	return devices, total, nil
 }

@@ -43,21 +43,20 @@ func (r *DeviceUserRepository) BindDeviceUser(deviceUser *model.DeviceUser) erro
 	}
 
 	// 插入绑定关系
-	query := `INSERT INTO user_dev (uid, dev_id, permission_level, is_active, bound_at, update_at) 
-		VALUES (?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO user_dev (uid, dev_id, permission_level, bind_at)
+		VALUES (?, ?, ?, ?)`
 	_, err = mysql.MysqlCli.Client.Exec(query,
-		deviceUser.UID, deviceUser.DevID, deviceUser.PermissionLevel,
-		deviceUser.IsActive, deviceUser.BoundAt, deviceUser.UpdateAt)
+		deviceUser.UID, deviceUser.DevID, deviceUser.PermissionLevel, deviceUser.BindAt)
 	return err
 }
 
 // GetDeviceUsers 获取设备的绑定用户列表
 func (r *DeviceUserRepository) GetDeviceUsers(devID int64) ([]*model.DeviceUserWithInfo, error) {
-	query := `SELECT ud.uid, u.username, u.email, ud.permission_level, ud.is_active, ud.bound_at
+	query := `SELECT ud.uid, u.username, u.email, ud.permission_level, ud.bind_at
 		FROM user_dev ud
 		LEFT JOIN user u ON ud.uid = u.uid
 		WHERE ud.dev_id = ?
-		ORDER BY ud.bound_at DESC`
+		ORDER BY ud.bind_at DESC`
 
 	rows, err := mysql.MysqlCli.Client.Query(query, devID)
 	if err != nil {
@@ -70,7 +69,7 @@ func (r *DeviceUserRepository) GetDeviceUsers(devID int64) ([]*model.DeviceUserW
 		user := &model.DeviceUserWithInfo{}
 		err := rows.Scan(
 			&user.UID, &user.Username, &user.Email,
-			&user.PermissionLevel, &user.IsActive, &user.BoundAt)
+			&user.PermissionLevel, &user.BindAt)
 		if err != nil {
 			return nil, err
 		}
@@ -83,12 +82,11 @@ func (r *DeviceUserRepository) GetDeviceUsers(devID int64) ([]*model.DeviceUserW
 // GetDeviceUser 获取设备用户绑定关系
 func (r *DeviceUserRepository) GetDeviceUser(devID, uid int64) (*model.DeviceUser, error) {
 	deviceUser := &model.DeviceUser{}
-	query := `SELECT uid, dev_id, permission_level, is_active, bound_at, update_at
+	query := `SELECT uid, dev_id, permission_level, bind_at
 		FROM user_dev WHERE dev_id = ? AND uid = ?`
 
 	err := mysql.MysqlCli.Client.QueryRow(query, devID, uid).Scan(
-		&deviceUser.UID, &deviceUser.DevID, &deviceUser.PermissionLevel,
-		&deviceUser.IsActive, &deviceUser.BoundAt, &deviceUser.UpdateAt)
+		&deviceUser.UID, &deviceUser.DevID, &deviceUser.PermissionLevel, &deviceUser.BindAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("设备用户绑定关系不存在")
@@ -101,12 +99,11 @@ func (r *DeviceUserRepository) GetDeviceUser(devID, uid int64) (*model.DeviceUse
 
 // UpdateDeviceUser 更新设备用户绑定关系
 func (r *DeviceUserRepository) UpdateDeviceUser(deviceUser *model.DeviceUser) error {
-	query := `UPDATE user_dev SET permission_level = ?, is_active = ?, update_at = ?
+	query := `UPDATE user_dev SET permission_level = ?
 		WHERE dev_id = ? AND uid = ?`
 
 	_, err := mysql.MysqlCli.Client.Exec(query,
-		deviceUser.PermissionLevel, deviceUser.IsActive, deviceUser.UpdateAt,
-		deviceUser.DevID, deviceUser.UID)
+		deviceUser.PermissionLevel, deviceUser.DevID, deviceUser.UID)
 	return err
 }
 
@@ -134,10 +131,7 @@ func (r *DeviceUserRepository) GetUserDevices(uid int64, page, pageSize int, dev
 		whereClause += " AND ud.permission_level = ?"
 		args = append(args, permissionLevel)
 	}
-	if isActive != nil {
-		whereClause += " AND ud.is_active = ?"
-		args = append(args, *isActive)
-	}
+	// 注意：isActive参数已废弃，因为SQL表中没有该字段
 
 	// 查询总数
 	var total int64
@@ -150,13 +144,13 @@ func (r *DeviceUserRepository) GetUserDevices(uid int64, page, pageSize int, dev
 
 	// 查询数据
 	offset := (page - 1) * pageSize
-	query := `SELECT d.dev_id, d.dev_name, d.dev_type, d.dev_model, d.dev_power, d.dev_status,
-		d.firmware_version, d.sampling_frequency, d.data_upload_interval, d.offline_threshold,
+	query := `SELECT d.dev_id, d.dev_name, d.dev_status, d.dev_type, d.dev_power,
+		d.model, d.version, d.sampling_rate, d.offline_threshold, d.upload_interval,
 		d.extended_config, d.create_at, d.update_at
 		FROM user_dev ud
 		INNER JOIN device d ON ud.dev_id = d.dev_id
 		` + whereClause + `
-		ORDER BY ud.bound_at DESC
+		ORDER BY ud.bind_at DESC
 		LIMIT ? OFFSET ?`
 	args = append(args, pageSize, offset)
 
@@ -171,9 +165,9 @@ func (r *DeviceUserRepository) GetUserDevices(uid int64, page, pageSize int, dev
 		device := &model.Device{}
 		var extendedConfigJSON sql.NullString
 		err := rows.Scan(
-			&device.DevID, &device.DevName, &device.DevType, &device.DevModel,
-			&device.DevPower, &device.DevStatus, &device.FirmwareVersion,
-			&device.SamplingFrequency, &device.DataUploadInterval, &device.OfflineThreshold,
+			&device.DevID, &device.DevName, &device.DevStatus, &device.DevType,
+			&device.DevPower, &device.Model, &device.Version,
+			&device.SamplingRate, &device.OfflineThreshold, &device.UploadInterval,
 			&extendedConfigJSON, &device.CreateAt, &device.UpdateAt)
 		if err != nil {
 			return nil, 0, err
@@ -188,4 +182,70 @@ func (r *DeviceUserRepository) GetUserDevices(uid int64, page, pageSize int, dev
 	}
 
 	return devices, total, nil
+}
+
+// GetUserDeviceStatistics 获取用户设备统计信息
+func (r *DeviceUserRepository) GetUserDeviceStatistics(uid int64) (map[string]interface{}, error) {
+	stats := make(map[string]interface{})
+
+	// 查询用户绑定的设备总数
+	var total int64
+	err := mysql.MysqlCli.Client.QueryRow(`SELECT COUNT(*) FROM user_dev WHERE uid = ?`, uid).Scan(&total)
+	if err != nil {
+		return nil, err
+	}
+	stats["total"] = total
+
+	// 查询在线设备数量
+	var online int64
+	err = mysql.MysqlCli.Client.QueryRow(`SELECT COUNT(*) FROM user_dev ud
+		INNER JOIN device d ON ud.dev_id = d.dev_id
+		WHERE ud.uid = ? AND d.dev_status = ?`, uid, model.DevStatusOnline).Scan(&online)
+	if err != nil {
+		return nil, err
+	}
+	stats["online"] = online
+
+	// 查询离线设备数量
+	var offline int64
+	err = mysql.MysqlCli.Client.QueryRow(`SELECT COUNT(*) FROM user_dev ud
+		INNER JOIN device d ON ud.dev_id = d.dev_id
+		WHERE ud.uid = ? AND d.dev_status = ?`, uid, model.DevStatusOffline).Scan(&offline)
+	if err != nil {
+		return nil, err
+	}
+	stats["offline"] = offline
+
+	// 查询异常设备数量
+	var abnormal int64
+	err = mysql.MysqlCli.Client.QueryRow(`SELECT COUNT(*) FROM user_dev ud
+		INNER JOIN device d ON ud.dev_id = d.dev_id
+		WHERE ud.uid = ? AND d.dev_status = ?`, uid, model.DevStatusAbnormal).Scan(&abnormal)
+	if err != nil {
+		return nil, err
+	}
+	stats["abnormal"] = abnormal
+
+	// 按类型统计
+	typeStats := make(map[string]int64)
+	rows, err := mysql.MysqlCli.Client.Query(`SELECT d.dev_type, COUNT(*) FROM user_dev ud
+		INNER JOIN device d ON ud.dev_id = d.dev_id
+		WHERE ud.uid = ?
+		GROUP BY d.dev_type`, uid)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var devType string
+			var count int64
+			if err := rows.Scan(&devType, &count); err == nil {
+				typeStats[devType] = count
+			}
+		}
+	}
+	stats["by_type"] = typeStats
+
+	// 设备种类数
+	stats["type"] = len(typeStats)
+
+	return stats, nil
 }

@@ -9,24 +9,22 @@ const (
 )
 
 type DeviceUser struct {
-	UID             int64     `json:"uid"`
-	DevID           int64     `json:"dev_id"`
-	PermissionLevel string    `json:"permission_level"` // r, w, rw
-	IsActive        bool      `json:"is_active"`
-	BoundAt         time.Time `json:"bound_at"`
-	UpdateAt        time.Time `json:"update_at"`
+	UID             int64     `json:"uid" db:"uid"`
+	DevID           int64     `json:"dev_id" db:"dev_id"`
+	PermissionLevel string    `json:"permission_level" db:"permission_level"` // r, w, rw
+	BindAt          time.Time `json:"bind_at" db:"bind_at"`                    // 绑定时间（对应SQL中的bind_at）
 }
 
 // DeviceUserBindingReq 设备用户绑定请求
 type DeviceUserBindingReq struct {
 	UID             int64  `json:"uid"`
+	DevID           int64  `json:"dev_id" binding:"required"`
 	PermissionLevel string `json:"permission_level" binding:"oneof=r w rw"`
 }
 
 // DeviceUserUpdateReq 更新设备用户绑定请求
 type DeviceUserUpdateReq struct {
 	PermissionLevel string `json:"permission_level" binding:"required"`
-	IsActive        *bool   `json:"is_active"`
 }
 
 // DeviceUserWithInfo 带用户信息的设备用户绑定
@@ -35,6 +33,5 @@ type DeviceUserWithInfo struct {
 	Username        string    `json:"username"`
 	Email           string    `json:"email"`
 	PermissionLevel string    `json:"permission_level"`
-	IsActive        bool      `json:"is_active"`
-	BoundAt         time.Time `json:"bound_at"`
+	BindAt          time.Time `json:"bind_at"` // 绑定时间
 }

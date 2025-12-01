@@ -118,11 +118,12 @@ func (s *SensorDataService) uploadFileData(req *model.UploadSensorDataRequest) (
 		}
 	}
 
-	// 确定object key（如果为空，创建默认的dev_id/filename为key）
+	// 确定object key（如果为空，创建默认的KEY: dev_id/YYYY/MM/DD/filename）
 	objectKey := req.FileData.BucketKey
 	if objectKey == "" {
 		filename := filepath.Base(req.FileData.FilePath)
-		objectKey = fmt.Sprintf("%d/%s", req.Metadata.DevID, filename)
+		now := time.Now()
+		objectKey = fmt.Sprintf("%d/%d/%02d/%02d/%s", req.Metadata.DevID, now.Year(), now.Month(), now.Day(), filename)
 	}
 
 	// 确定content type
@@ -183,9 +184,6 @@ func (s *SensorDataService) GetFileList(page, pageSize int, dataType string, dev
 		if deviceUser.PermissionLevel != model.PermissionLevelRead &&
 			deviceUser.PermissionLevel != model.PermissionLevelReadWrite {
 			return nil, 0, errors.New("您没有读权限")
-		}
-		if !deviceUser.IsActive {
-			return nil, 0, errors.New("设备绑定关系未激活")
 		}
 	}
 
