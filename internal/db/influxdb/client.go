@@ -68,15 +68,45 @@ func InitInfluxDBClient(cfg config.InfluxDBConfig) (*influxdb3.Client, error) {
 		return nil, fmt.Errorf("创建InfluxDB客户端失败: %v", err)
 	}
 
-	// 测试连接
+	// 测试连接并检查数据库是否存在
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// 可以通过执行一个简单的查询来测试连接
-	query := "SELECT 1"
-	_, err = client.Query(ctx, query)
+	// 尝试查询数据库列表来检查数据库是否存在
+	// InfluxDB v3 使用 SHOW DATABASES 命令
+	showDbQuery := "SHOW DATABASES"
+	iter, err := client.Query(ctx, showDbQuery)
 	if err != nil {
 		return nil, fmt.Errorf("InfluxDB连接测试失败: %v", err)
+	}
+
+	// 检查数据库是否存在
+	databaseExists := false
+	for iter.Next() {
+		record := iter.Value()
+		// 遍历记录查找数据库名称
+		for _, val := range record {
+			if dbName, ok := val.(string); ok && dbName == cfg.Database {
+				databaseExists = true
+				break
+			}
+		}
+		if databaseExists {
+			break
+		}
+	}
+
+	// 如果数据库不存在，则创建
+	if !databaseExists {
+		logger.L().Info("数据库不存在，正在创建", logger.WithString("database", cfg.Database))
+		createDbQuery := fmt.Sprintf("CREATE DATABASE \"%s\"", cfg.Database)
+		_, err = client.Query(ctx, createDbQuery)
+		if err != nil {
+			return nil, fmt.Errorf("创建数据库失败: %v", err)
+		}
+		logger.L().Info("数据库创建成功", logger.WithString("database", cfg.Database))
+	} else {
+		logger.L().Info("数据库已存在", logger.WithString("database", cfg.Database))
 	}
 
 	logger.L().Info("InfluxDB客户端初始化成功")
