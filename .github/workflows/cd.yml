@@ -89,5 +89,5 @@ jobs:
             git stash
             git pull
             git stash drop
-            docker compose up -d server
+            docker compose up -d backend
             echo "Deployment completed successfully!"

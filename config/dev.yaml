@@ -19,9 +19,9 @@ mysql:
   max_lifetime: 5  # 单位:min
 
 influxdb:
-  # host: http://influxdb3:8181
+  # host: http://influxdb3-core:8181
   host: http://localhost:8181
-  token: apiv3_kYq_tju1yk5rlHX2ZCFacqV2zg1gxWKUs6KOSXFrnQ9XzZiaJulVKJBebi3Rjow97LywSOi3g9wWBZ0wbWhIGA
+  token: apiv3_bhlqSnJIKGLmnZlfdEZBgrAIFIRs5iDvyjR_yUly1B3N_oSE8G3iqFPtpomCS0Xj-ohNgIdZJq6_X2KFY7nm9w
   database: sensor_ts_data
 
 minio:  

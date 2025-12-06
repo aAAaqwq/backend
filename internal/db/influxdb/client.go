@@ -67,7 +67,7 @@ func ensureDatabaseExists(cfg config.InfluxDBConfig) error {
 
 	// 准备请求体
 	requestBody := map[string]interface{}{
-		"database_name": cfg.Database,
+		"db": cfg.Database,
 	}
 
 	jsonData, err := json.Marshal(requestBody)
