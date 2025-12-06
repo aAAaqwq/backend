@@ -7,8 +7,8 @@ server:
   mode: debug
 
 mysql:
-  # host: mysql 
-  host: localhost
+  host: mysql 
+  # host: localhost
   port: 3306
   user: root
   password: mysql666.
@@ -19,14 +19,14 @@ mysql:
   max_lifetime: 5  # 单位:min
 
 influxdb:
-  # host: http://influxdb3:8181
-  host: http://localhost:8181
+  host: http://influxdb3:8181
+  # host: http://localhost:8181
   token: apiv3_kYq_tju1yk5rlHX2ZCFacqV2zg1gxWKUs6KOSXFrnQ9XzZiaJulVKJBebi3Rjow97LywSOi3g9wWBZ0wbWhIGA
   database: sensor_ts_data
 
 minio:
-  # endpoint: minio:9000
-  endpoint: localhost:9000
+  endpoint: minio:9000
+  # endpoint: localhost:9000
   access_key_id: admin
   secret_access_key: minio@666
   use_ssl: false
@@ -36,15 +36,15 @@ logger:
   level: debug
   encoding: console
   development: true
-  enableCaller: true
+  enableCaller: true    # 显示日志调用位置
   enableStacktrace: false
   stacktraceLevel: error
   outputPaths:
     - stdout
-    - ../data/logs/app.log
+    - ./data/logs/app.log
   errorOutputPaths:
     - stderr
-    - ../data/logs/error.log
+    - ./data/logs/error.log
   serviceName: sensor-manage-hub
   environment: dev
   async: true
@@ -58,7 +58,7 @@ logger:
     level: info
   file:
     enable: false
-    filename: ../data/logs/retated.log
+    filename: ./data/logs/retated.log
     maxSize: 128
     maxBackups: 7
     maxAge: 7

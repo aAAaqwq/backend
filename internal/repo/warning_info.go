@@ -4,6 +4,7 @@ import (
 	"backend/internal/db/mysql"
 	"backend/internal/model"
 	"backend/pkg/utils"
+	"database/sql"
 )
 
 type WarningInfoRepository struct{}
@@ -26,16 +27,22 @@ func (r *WarningInfoRepository) CreateWarningInfo(warning *model.WarningInfo) er
 // GetWarningInfo 获取告警信息
 func (r *WarningInfoRepository) GetWarningInfo(alertID int64) (*model.WarningInfo, error) {
 	warning := &model.WarningInfo{}
+	var resolvedAt sql.NullTime
 
 	query := `SELECT alert_id, data_id, dev_id, alert_type, alert_message, alert_status, triggered_at, resolved_at
 		FROM alert_event WHERE alert_id = ?`
 
 	err := mysql.MysqlCli.Client.QueryRow(query, alertID).Scan(
 		&warning.AlertID, &warning.DataID, &warning.DevID, &warning.AlertType, &warning.AlertMessage, &warning.AlertStatus,
-		&warning.TriggeredAt, &warning.ResolvedAt)
+		&warning.TriggeredAt, &resolvedAt)
 
 	if err != nil {
 		return nil, err
+	}
+
+	// 处理可空的 resolved_at
+	if resolvedAt.Valid {
+		warning.ResolvedAt = &resolvedAt.Time
 	}
 
 	return warning, nil
@@ -81,12 +88,20 @@ func (r *WarningInfoRepository) GetWarningInfoList(page, pageSize int, alertType
 	var warnings []*model.WarningInfo
 	for rows.Next() {
 		warning := &model.WarningInfo{}
+		var resolvedAt sql.NullTime
+
 		err := rows.Scan(
 			&warning.AlertID, &warning.DataID, &warning.DevID, &warning.AlertType, &warning.AlertMessage, &warning.AlertStatus,
-			&warning.TriggeredAt, &warning.ResolvedAt)
+			&warning.TriggeredAt, &resolvedAt)
 		if err != nil {
 			return nil, 0, err
 		}
+
+		// 处理可空的 resolved_at
+		if resolvedAt.Valid {
+			warning.ResolvedAt = &resolvedAt.Time
+		}
+
 		warnings = append(warnings, warning)
 	}
 

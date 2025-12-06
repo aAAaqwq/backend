@@ -22,8 +22,8 @@ services:
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
-      - ../data/mysql/data:/var/lib/mysql
-      - ../data/mysql/conf.d:/etc/mysql/conf.d
+      - ./data/mysql/data:/var/lib/mysql
+      - ./data/mysql/conf.d:/etc/mysql/conf.d
     user: "999:999"  # 使用MySQL用户ID避免权限问题
     networks:
       - sensor_data_hub_network
@@ -42,8 +42,8 @@ services:
     - --console-address 
     - ":9001"
    volumes:
-    - ../data/minio/data:/data
-    - ../data/minio/config:/root/.minio
+    - ./data/minio/data:/data
+    - ./data/minio/config:/root/.minio
    environment:
     - MINIO_ROOT_USER=${MINIO_ROOT_USER}
     - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
@@ -62,10 +62,10 @@ services:
       - --plugin-dir=/var/lib/influxdb3/plugins
     volumes:
       - type: bind
-        source: ../data/influxdb3/data
+        source: ./data/influxdb3/data
         target: /var/lib/influxdb3/data
       - type: bind
-        source: ../data/influxdb3/plugins
+        source: ./data/influxdb3/plugins
         target: /var/lib/influxdb3/plugins
     networks:
       - sensor_data_hub_network

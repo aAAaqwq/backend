@@ -21,6 +21,9 @@ func (s *WarningInfoService) CreateWarningInfo(warning *model.WarningInfo) (*mod
 		warning.TriggeredAt = utils.GetCurrentTime()
 	}
 
+	// ResolvedAt 默认为 nil (NULL)，表示未解决
+	// 不需要额外处理，指针类型默认就是 nil
+
 	err := s.warningRepo.CreateWarningInfo(warning)
 	if err != nil {
 		return nil, err
