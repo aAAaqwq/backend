@@ -7,8 +7,8 @@ server:
   mode: debug
 
 mysql:
-  # host: mysql 
-  host: localhost
+  host: mysql 
+  # host: localhost
   port: 3306
   user: root
   password: mysql666.
@@ -19,14 +19,14 @@ mysql:
   max_lifetime: 5  # 单位:min
 
 influxdb:
-  # host: http://influxdb3:8181
-  host: http://localhost:8181
-  token: apiv3_kYq_tju1yk5rlHX2ZCFacqV2zg1gxWKUs6KOSXFrnQ9XzZiaJulVKJBebi3Rjow97LywSOi3g9wWBZ0wbWhIGA
+  host: http://influxdb3:8181
+  # host: http://localhost:8181
+  token: apiv3_T_uOCN93BxgKHYkz5bRPP9e43iR0L9Ptm2V7lviAwher7InaSyeDJHx10RdCfeSdg2u4y1AqLWY8xE4Jo0nXAw
   database: sensor_ts_data
 
 minio:  
-  # endpoint: minio:9000
-  endpoint: localhost:9000
+  endpoint: minio:9000
+  # endpoint: localhost:9000
   access_key_id: admin
   secret_access_key: minio@666
   use_ssl: false

@@ -1,56 +1,47 @@
 name: sensor_data_hub
+
 services:
-  backend:
-    container_name: server
-    image: aaqwqaa/sensor_backend:latest
-    ports:
-      - 12000:12000
-    volumes:
-      # - ../data:/app/data
-      - ./config/dev.yaml:/app/config/dev.yaml
-    networks:
-      - sensor_data_hub_network
   mysql:
     image: mysql:oraclelinux9
     container_name: mysql
-    ports:
-      - 3306:3306
-    restart: always
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE}
       MYSQL_USER: ${MYSQL_USER}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports: ["3306:3306"]
     volumes:
-      - ./data/mysql/data:/var/lib/mysql
-      - ./data/mysql/conf.d:/etc/mysql/conf.d
-    user: "999:999"  # 使用MySQL用户ID避免权限问题
-    networks:
-      - sensor_data_hub_network
+      - mysql-data:/var/lib/mysql
+      - ./script/sensor_data_hub.sql:/docker-entrypoint-initdb.d/sensor_data_hub.sql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [sensor_data_hub_network]
 
   minio:
-   image: minio/minio:latest
-   container_name: minio
-   networks:
-    - sensor_data_hub_network
-   ports:
-    - 9000:9000
-    - 9001:9001
-   command:
-    - server
-    - /data
-    - --console-address 
-    - ":9001"
-   volumes:
-    - ./data/minio/data:/data
-    - ./data/minio/config:/root/.minio
-   environment:
-    - MINIO_ROOT_USER=${MINIO_ROOT_USER}
-    - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
-  
+    image: minio/minio:latest
+    container_name: minio
+    command: ["server","/data","--console-address",":9001"]
+    ports: ["9000:9000","9001:9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+      - minio-config:/root/.minio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [sensor_data_hub_network]
+
   influxdb3-core:
-    container_name: influxdb3
     image: influxdb:3-core
+    container_name: influxdb3-core
     ports:
       - 8181:8181
     command:
@@ -71,15 +62,31 @@ services:
       - sensor_data_hub_network
 
   influxdb3-ui:
-     image: influxdata/influxdb3-ui:latest
-     container_name: influxdb3-ui
-     ports:
-      - 8888:80
-      - 8889:8888
-     networks:
-      - sensor_data_hub_network
-    
+    image: influxdata/influxdb3-ui:latest
+    container_name: influxdb3-ui
+    ports: ["8888:80","8889:8888"]
+    networks: [sensor_data_hub_network]
+
+  backend:
+    container_name: server
+    image: aaqwqaa/sensor_backend:latest
+    depends_on:
+      mysql:
+        condition: service_healthy
+      influxdb3-core:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    ports: ["12000:12000"]
+    volumes:
+      - ./config/dev.yaml:/app/config/dev.yaml
+    networks: [sensor_data_hub_network]
 
 networks:
-    sensor_data_hub_network:
-      driver: bridge
+  sensor_data_hub_network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+  minio-data:
+  minio-config:

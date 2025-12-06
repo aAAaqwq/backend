@@ -18,4 +18,4 @@ COPY --from=builder /app/main .
 
 EXPOSE 12000
 
-CMD ["./main", "-c", "/app/config/dev.yaml"]
+CMD ["./main", "-c", "/app/config/prod.yaml"]
