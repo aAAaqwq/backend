@@ -21,7 +21,7 @@ mysql:
 influxdb:
   host: http://influxdb3:8181
   # host: http://localhost:8181
-  token: apiv3_T_uOCN93BxgKHYkz5bRPP9e43iR0L9Ptm2V7lviAwher7InaSyeDJHx10RdCfeSdg2u4y1AqLWY8xE4Jo0nXAw
+  token: apiv3_w8quNtyqcf9IKpViJpt6sB5LnZ9AERch2uF9IA0SIXOfsYFmtqzACubwj4acDLeQ_DMO9dj1_W6bV8A-DxeAYA
   database: sensor_ts_data
 
 minio:  
