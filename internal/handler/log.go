@@ -1,97 +1,121 @@
 package handler
 
 import (
+	"backend/internal/model"
+	"backend/internal/service"
 	"backend/pkg/logger"
 	"backend/pkg/utils"
-	"context"
 	"fmt"
-	"os"
 
 	"github.com/gin-gonic/gin"
-	"github.com/minio/minio-go/v7"
 )
 
-type LogHandler struct{}
-
-func NewLogHandler() *LogHandler {
-	return &LogHandler{}
+type LogHandler struct {
+	logService *service.LogService
 }
 
-// UploadLog 日志上传
-func (h *LogHandler) UploadLog(c *gin.Context) {
-	var req struct {
-		FilePath   string `json:"file_path" binding:"required"`
-		BucketName string `json:"bucket_name" binding:"required"`
-		ObjectName string `json:"object_name" binding:"required"`
-	}
+func NewLogHandler() *LogHandler {
+	return &LogHandler{logService: service.NewLogService()}
+}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
+// CreateLog 日志上传
+func (h *LogHandler) CreateLog(c *gin.Context) {
+	log := &model.Log{}
+	if err := c.ShouldBindJSON(log); err != nil {
 		Error(c, CodeBadRequest, err.Error())
 		return
 	}
 
-	// 检查文件是否存在
-	if _, err := os.Stat(req.FilePath); os.IsNotExist(err) {
-		Error(c, CodeBadRequest, "文件不存在")
+	// 验证必填字段
+	if log.Type == "" || log.Message == "" || log.UserAgent == "" {
+		Error(c, CodeBadRequest, "缺少必填字段")
 		return
 	}
 
-	// 上传到MinIO
-	file, err := os.Open(req.FilePath)
+	log, err := h.logService.CreateLog(log)
 	if err != nil {
-		logger.L().Error("打开文件失败", logger.WithError(err))
-		Error(c, CodeInternalServerError, "打开文件失败")
-		return
-	}
-	defer file.Close()
-
-	fileInfo, err := file.Stat()
-	if err != nil {
-		logger.L().Error("获取文件信息失败", logger.WithError(err))
-		Error(c, CodeInternalServerError, "获取文件信息失败")
+		logger.L().Error("创建日志失败", logger.WithError(err))
+		Error(c, CodeInternalServerError, err.Error())
 		return
 	}
 
-	// TODO: 需要从配置中获取MinIO客户端
-	// 这里暂时返回成功，实际使用时需要初始化MinIO客户端
-	ctx := context.Background()
-	_ = ctx
-
-	// TODO: 实现MinIO文件上传
-	// 需要先获取MinIO客户端实例
-	// minioClient, err := minio.GetMinIOClient(cfg)
-	// if err != nil {
-	//     Error(c, CodeInternalServerError, "MinIO客户端未初始化")
-	//     return
-	// }
-
-	// 确保bucket存在
-	// exists, err := minioClient.Client.BucketExists(ctx, req.BucketName)
-	// ...
-
-	// 上传文件
-	// _, err = minioClient.Client.PutObject(ctx, req.BucketName, req.ObjectName, file, fileInfo.Size(), minio.PutObjectOptions{})
-	_ = fileInfo
-	_ = minio.PutObjectOptions{}
-
-	logID := utils.GetDefaultSnowflake().Generate()
 	Success(c, "日志上传成功", gin.H{
-		"log_id": fmt.Sprintf("%d", logID),
+		"log_id": fmt.Sprintf("%d", log.LogID),
 	})
 }
 
 // GetLogs 日志查询
 func (h *LogHandler) GetLogs(c *gin.Context) {
-	logID, _ := c.GetQuery("log_id")
+	logIDStr, _ := c.GetQuery("log_id")
 	startTime, _ := c.GetQuery("start_time")
 	endTime, _ := c.GetQuery("end_time")
+	logType, _ := c.GetQuery("type")
+	levelStr, _ := c.GetQuery("level")
 
-	// TODO: 实现日志查询逻辑
-	// 这里可以根据logID、时间范围等条件查询日志
+	// 如果提供了 log_id，直接查询单个日志
+	if logIDStr != "" {
+		logID, err := utils.ConvertToInt64(logIDStr)
+		if err != nil {
+			Error(c, CodeBadRequest, "无效的日志ID")
+			return
+		}
+
+		log, err := h.logService.GetLog(logID)
+		if err != nil {
+			logger.L().Error("查询日志失败", logger.WithError(err))
+			Error(c, CodeNotFound, "日志不存在")
+			return
+		}
+
+		Success(c, "日志查询成功", gin.H{
+			"log_id":  fmt.Sprintf("%d", log.LogID),
+			"message": log.Message,
+		})
+		return
+	}
+
+	// 查询日志列表
+	var level *int
+	if levelStr != "" {
+		levelInt, err := utils.ConvertToInt64(levelStr)
+		if err == nil {
+			levelValue := int(levelInt)
+			level = &levelValue
+		}
+	}
+
+	logs, err := h.logService.GetLogs(logType, level, startTime, endTime)
+	if err != nil {
+		logger.L().Error("查询日志列表失败", logger.WithError(err))
+		Error(c, CodeInternalServerError, err.Error())
+		return
+	}
 
 	Success(c, "日志查询成功", gin.H{
-		"log_id":     logID,
-		"start_time": startTime,
-		"end_time":   endTime,
+		"logs": logs,
 	})
+}
+
+// DeleteLog 日志删除
+func (h *LogHandler) DeleteLog(c *gin.Context) {
+	logIDStr := c.Query("log_id")
+	if logIDStr == "" {
+		Error(c, CodeBadRequest, "缺少日志ID")
+		return
+	}
+
+	logID, err := utils.ConvertToInt64(logIDStr)
+	if err != nil {
+		Error(c, CodeBadRequest, "无效的日志ID")
+		return
+	}
+
+	err = h.logService.DeleteLog(logID)
+	if err != nil {
+		logger.L().Error("删除日志失败", logger.WithError(err))
+		Error(c, CodeInternalServerError, err.Error())
+		return
+	}
+
+	Success(c, "日志删除成功", nil)
 }

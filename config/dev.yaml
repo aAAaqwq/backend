@@ -24,7 +24,7 @@ influxdb:
   token: apiv3_kYq_tju1yk5rlHX2ZCFacqV2zg1gxWKUs6KOSXFrnQ9XzZiaJulVKJBebi3Rjow97LywSOi3g9wWBZ0wbWhIGA
   database: sensor_ts_data
 
-minio:
+minio:  
   endpoint: minio:9000
   # endpoint: localhost:9000
   access_key_id: admin

@@ -41,6 +41,8 @@ func (h *WarningInfoHandler) GetWarningInfoList(c *gin.Context) {
 	pageSize, _ := c.GetQuery("page_size")
 	alertType, _ := c.GetQuery("alert_type")
 	alertStatus, _ := c.GetQuery("alert_status")
+	devIDStr, _ := c.GetQuery("dev_id")
+	dataIDStr, _ := c.GetQuery("data_id")
 
 	pageInt, _ := utils.ConvertToInt64(page)
 	if pageInt <= 0 {
@@ -51,7 +53,22 @@ func (h *WarningInfoHandler) GetWarningInfoList(c *gin.Context) {
 		pageSizeInt = 10
 	}
 
-	warnings, total, err := h.warningService.GetWarningInfoList(int(pageInt), int(pageSizeInt), alertType, alertStatus)
+	// 转换 dev_id 和 data_id
+	var devID, dataID *int64
+	if devIDStr != "" {
+		devIDInt, err := utils.ConvertToInt64(devIDStr)
+		if err == nil {
+			devID = &devIDInt
+		}
+	}
+	if dataIDStr != "" {
+		dataIDInt, err := utils.ConvertToInt64(dataIDStr)
+		if err == nil {
+			dataID = &dataIDInt
+		}
+	}
+
+	warnings, total, err := h.warningService.GetWarningInfoList(int(pageInt), int(pageSizeInt), alertType, alertStatus, devID, dataID)
 	if err != nil {
 		logger.L().Error("查询告警信息列表失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())
@@ -64,7 +81,7 @@ func (h *WarningInfoHandler) GetWarningInfoList(c *gin.Context) {
 	}
 
 	Success(c, "查询告警信息列表成功", gin.H{
-		"items": warnings,
+		"warning_lists": warnings,
 		"pagination": gin.H{
 			"page":        pageInt,
 			"page_size":   pageSizeInt,
@@ -95,21 +112,34 @@ func (h *WarningInfoHandler) GetWarningInfo(c *gin.Context) {
 
 // UpdateWarningInfo 更新告警信息
 func (h *WarningInfoHandler) UpdateWarningInfo(c *gin.Context) {
-	alertIDStr := c.Param("alert_id")
+	// 从查询参数获取 alert_id 和 alert_status
+	alertIDStr := c.Query("alert_id")
+	alertStatus := c.Query("alert_status")
+
+	// 验证参数
+	if alertIDStr == "" {
+		Error(c, CodeBadRequest, "缺少告警ID")
+		return
+	}
+	if alertStatus == "" {
+		Error(c, CodeBadRequest, "缺少告警状态")
+		return
+	}
+
 	alertID, err := utils.ConvertToInt64(alertIDStr)
 	if err != nil {
 		Error(c, CodeBadRequest, "无效的告警ID")
 		return
 	}
 
-	warning := &model.WarningInfo{}
-	if err := c.ShouldBindJSON(warning); err != nil {
-		Error(c, CodeBadRequest, err.Error())
+	// 验证 alert_status 的有效值
+	if alertStatus != "active" && alertStatus != "resolved" && alertStatus != "ignored" {
+		Error(c, CodeBadRequest, "无效的告警状态，必须是 active/resolved/ignored")
 		return
 	}
 
-	warning.AlertID = alertID
-	warning, err = h.warningService.UpdateWarningInfo(warning)
+	// 调用服务层更新告警状态
+	warning, err := h.warningService.UpdateWarningStatus(alertID, alertStatus)
 	if err != nil {
 		logger.L().Error("更新告警信息失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())
@@ -121,7 +151,13 @@ func (h *WarningInfoHandler) UpdateWarningInfo(c *gin.Context) {
 
 // DeleteWarningInfo 删除告警信息
 func (h *WarningInfoHandler) DeleteWarningInfo(c *gin.Context) {
-	alertIDStr := c.Param("alert_id")
+	// 从查询参数获取 alert_id
+	alertIDStr := c.Query("alert_id")
+	if alertIDStr == "" {
+		Error(c, CodeBadRequest, "缺少告警ID")
+		return
+	}
+
 	alertID, err := utils.ConvertToInt64(alertIDStr)
 	if err != nil {
 		Error(c, CodeBadRequest, "无效的告警ID")

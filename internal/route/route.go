@@ -49,13 +49,13 @@ func RegisterRoutes(router *gin.Engine) {
 		warningHandler := handler.NewWarningInfoHandler()
 		api.POST("/warning_info", warningHandler.CreateWarningInfo)
 		api.GET("/warning_info", warningHandler.GetWarningInfoList)
-		api.GET("/warning_info/:alert_id", warningHandler.GetWarningInfo)
-		api.PUT("/warning_info/:alert_id", warningHandler.UpdateWarningInfo)
-		api.DELETE("/warning_info/:alert_id", warningHandler.DeleteWarningInfo)
+		api.PUT("/warning_info", warningHandler.UpdateWarningInfo)
+		api.DELETE("/warning_info", warningHandler.DeleteWarningInfo)
 
 		// 日志相关接口
 		logHandler := handler.NewLogHandler()
-		api.POST("/logs", logHandler.UploadLog)
-		api.GET("/logs", logHandler.GetLogs)
+		api.POST("/logs", middleware.JWTAuthMiddleware(), middleware.AdminOnlyMiddleware(), logHandler.CreateLog)
+		api.GET("/logs", middleware.JWTAuthMiddleware(), middleware.AdminOnlyMiddleware(), logHandler.GetLogs)
+		api.DELETE("/logs", middleware.JWTAuthMiddleware(), middleware.AdminOnlyMiddleware(), logHandler.DeleteLog)
 	}
 }

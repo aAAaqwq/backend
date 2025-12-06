@@ -5,6 +5,7 @@ import (
 	"backend/internal/model"
 	"backend/pkg/utils"
 	"database/sql"
+	"time"
 )
 
 type WarningInfoRepository struct{}
@@ -49,7 +50,7 @@ func (r *WarningInfoRepository) GetWarningInfo(alertID int64) (*model.WarningInf
 }
 
 // GetWarningInfoList 获取告警信息列表
-func (r *WarningInfoRepository) GetWarningInfoList(page, pageSize int, alertType, alertStatus string) ([]*model.WarningInfo, int64, error) {
+func (r *WarningInfoRepository) GetWarningInfoList(page, pageSize int, alertType, alertStatus string, devID, dataID *int64) ([]*model.WarningInfo, int64, error) {
 	whereClause := "WHERE 1=1"
 	args := []interface{}{}
 
@@ -60,6 +61,14 @@ func (r *WarningInfoRepository) GetWarningInfoList(page, pageSize int, alertType
 	if !utils.IsEmpty(alertStatus) {
 		whereClause += " AND alert_status = ?"
 		args = append(args, alertStatus)
+	}
+	if devID != nil {
+		whereClause += " AND dev_id = ?"
+		args = append(args, *devID)
+	}
+	if dataID != nil {
+		whereClause += " AND data_id = ?"
+		args = append(args, *dataID)
 	}
 
 	offset := (page - 1) * pageSize
@@ -115,6 +124,13 @@ func (r *WarningInfoRepository) UpdateWarningInfo(warning *model.WarningInfo) er
 
 	_, err := mysql.MysqlCli.Client.Exec(query,
 		warning.DataID, warning.DevID, warning.AlertType, warning.AlertMessage, warning.AlertStatus, warning.ResolvedAt, warning.AlertID)
+	return err
+}
+
+// UpdateWarningStatus 更新告警状态
+func (r *WarningInfoRepository) UpdateWarningStatus(alertID int64, alertStatus string, resolvedAt *time.Time) error {
+	query := `UPDATE alert_event SET alert_status = ?, resolved_at = ? WHERE alert_id = ?`
+	_, err := mysql.MysqlCli.Client.Exec(query, alertStatus, resolvedAt, alertID)
 	return err
 }
 
