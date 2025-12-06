@@ -198,3 +198,6 @@
 2025-12-06T10:57:26.626564497+08:00	[34mINFO[0m	mysql/client.go:53	Mysql客户端初始化成功	{"svc": "sensor-manage-hub", "env": "dev"}
 2025-12-06T10:57:26.626639355+08:00	[34mINFO[0m	cmd/main.go:59	所有客户端初始化成功	{"svc": "sensor-manage-hub", "env": "dev"}
 2025-12-06T10:57:26.626819721+08:00	[34mINFO[0m	cmd/main.go:141	服务器启动成功	{"svc": "sensor-manage-hub", "env": "dev", "Listening ON:": "0.0.0.0:12000"}
+2025-12-06T11:17:24.140633614+08:00	[34mINFO[0m	cmd/main.go:147	开始优雅关闭服务器...	{"svc": "sensor-manage-hub", "env": "dev"}
+2025-12-06T11:17:24.148932946+08:00	[34mINFO[0m	cmd/main.go:157	服务器已优雅关闭	{"svc": "sensor-manage-hub", "env": "dev"}
+2025-12-06T11:17:24.162638349+08:00	[34mINFO[0m	cmd/main.go:81	客户端关闭成功	{"svc": "sensor-manage-hub", "env": "dev"}
