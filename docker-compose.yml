@@ -12,7 +12,7 @@ services:
     ports: ["3306:3306"]
     volumes:
       - mysql-data:/var/lib/mysql
-      - ./script/sensor_data_hub.sql:/docker-entrypoint-initdb.d/sensor_data_hub.sql
+      - ./script/sensor_manage_hub.sql:/docker-entrypoint-initdb.d/sensor_manage_hub.sql
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD}"]
@@ -79,7 +79,7 @@ services:
         condition: service_healthy
     ports: ["12000:12000"]
     volumes:
-      - ./config/prod.yaml:/app/config/prod.yaml
+      - ./config/dev.yaml:/app/config/prod.yaml
     networks: [sensor_data_hub_network]
 
 networks:
