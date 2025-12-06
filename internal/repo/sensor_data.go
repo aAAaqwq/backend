@@ -84,25 +84,20 @@ func (r *SensorDataRepository) DeleteObject(bucketName, objectName string) error
 }
 
 // QuerySeriesData 查询时序数据
-func (r *SensorDataRepository) QuerySeriesData(measurement string, devID, uid, dataID int64, startTime, endTime int64,
-	tags map[string]string, fields []string, downSampleEvery string, aggregate string, limitPoints int) ([]model.Point, error) {
+func (r *SensorDataRepository) QuerySeriesData(measurement string, devID int64, startTime, endTime int64,
+	tags map[string]string, fields map[string]interface{}, downSampleInterval string, aggregate string, limitPoints int) ([]model.Point, error) {
 	if influxdb.InfluxDBCli == nil {
 		return nil, fmt.Errorf("InfluxDB客户端未初始化")
 	}
 
-	// 使用传入的tags（应该已经包含dev_id和data_id）
+	// 使用传入的tags（应该已经包含dev_id）
 	queryTags := tags
 	if queryTags == nil {
 		queryTags = make(map[string]string)
 	}
-	// 确保包含dev_id和data_id（如果传入的tags中没有，则添加）
+	// 确保包含dev_id（如果传入的tags中没有，则添加）
 	if _, exists := queryTags["dev_id"]; !exists {
 		queryTags["dev_id"] = fmt.Sprintf("%d", devID)
-	}
-	if dataID > 0 {
-		if _, exists := queryTags["data_id"]; !exists {
-			queryTags["data_id"] = fmt.Sprintf("%d", dataID)
-		}
 	}
 
 	// 构建时间范围
@@ -113,11 +108,19 @@ func (r *SensorDataRepository) QuerySeriesData(measurement string, devID, uid, d
 
 	// 解析下采样间隔
 	var downSampleDuration time.Duration
-	if downSampleEvery != "" {
+	if downSampleInterval != "" {
 		var err error
-		downSampleDuration, err = time.ParseDuration(downSampleEvery)
+		downSampleDuration, err = time.ParseDuration(downSampleInterval)
 		if err != nil {
 			return nil, fmt.Errorf("下采样间隔格式错误: %v", err)
+		}
+	}
+
+	// 将fields转换为[]string（如果不为nil）
+	var fieldNames []string
+	if fields != nil {
+		for fieldName := range fields {
+			fieldNames = append(fieldNames, fieldName)
 		}
 	}
 
@@ -125,7 +128,7 @@ func (r *SensorDataRepository) QuerySeriesData(measurement string, devID, uid, d
 	opts := influxdb.QueryOptions{
 		Measurement:     measurement,
 		Tags:            queryTags,
-		Fields:          fields,
+		Fields:          fieldNames,
 		TimeRange:       timeRange,
 		DownsampleEvery: downSampleDuration,
 		Aggregate:       aggregate,
@@ -145,17 +148,6 @@ func (r *SensorDataRepository) QuerySeriesData(measurement string, devID, uid, d
 	}
 
 	return points, nil
-}
-
-// DeleteSeriesData 删除时序数据
-func (r *SensorDataRepository) DeleteSeriesData(measurement string, devID, uid int64, startTime, endTime int64) error {
-	if influxdb.InfluxDBCli == nil {
-		return fmt.Errorf("InfluxDB客户端未初始化")
-	}
-
-	startTimePtr := &startTime
-	endTimePtr := &endTime
-	return influxdb.InfluxDBCli.DeleteSensorData(devID, startTimePtr, endTimePtr)
 }
 
 // GetSeriesDataStatistics 获取时序数据统计信息

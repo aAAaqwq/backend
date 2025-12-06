@@ -206,7 +206,7 @@ func New(cfg config.LoggerConfig, opts ...zap.Option) (*zap.Logger, error) {
 
 	// options
 	if cfg.EnableCaller {
-		opts = append(opts, zap.AddCaller(), zap.AddCallerSkip(1))
+		opts = append(opts, zap.AddCaller())
 	}
 	if cfg.EnableStacktrace {
 		stackLevel := zapcore.ErrorLevel
@@ -244,7 +244,8 @@ func New(cfg config.LoggerConfig, opts ...zap.Option) (*zap.Logger, error) {
 }
 
 // WithContext adds common IDs from context to logger (e.g., trace_id, user_id).
-// Supports both default extractors and custom extractors registered via RegisterContextExtractor.
+// Supports both default extra
+// ctors and custom extractors registered via RegisterContextExtractor.
 func WithContext(ctx context.Context) *zap.Logger {
 	l := L()
 	if ctx == nil {

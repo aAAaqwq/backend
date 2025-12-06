@@ -15,7 +15,7 @@ type Point struct {
 }
 
 type FileData struct {
-	FilePath   string `json:"file_path" binding:"required"`
+	FilePath   string `json:"file_path" binding:"required"` // 本地文件路径
 	BucketName string `json:"bucket_name"` // 可空，为空时根据data_type或文件路径推断
 	BucketKey  string `json:"bucket_key"`  // 可空，为空时创建默认的dev_id/filename为key
 }

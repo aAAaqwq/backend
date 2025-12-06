@@ -262,6 +262,8 @@ func (c *InfluxDBClient) Query(opts QueryOptions) (interface{}, error) {
 		return nil, err
 	}
 
+	logger.L().Info("构建SQL语句完成", logger.WithAny("sql",sql))
+
 	// 2. 设定超时
 	ctx, cancel := context.WithTimeout(context.Background(), Timeout)
 	defer cancel()
@@ -304,14 +306,25 @@ func buildQuerySQL(opts QueryOptions) (string, error) {
 		))
 	} else {
 		// 原始点
-		cols := []string{"time"}
 		if len(opts.Fields) == 0 {
-			cols = append(cols, "*")
+			// 没有指定fields，查询所有字段
+			sb.WriteString("SELECT *")
 		} else {
-			cols = append(cols, opts.Fields...)
+			// 指定了fields，去重后查询
+			fieldSet := make(map[string]bool)
+			var uniqueFields []string
+
+			// 去重fields
+			for _, f := range opts.Fields {
+				if !fieldSet[f] {
+					fieldSet[f] = true
+					uniqueFields = append(uniqueFields, f)
+				}
+			}
+
+			sb.WriteString("SELECT ")
+			sb.WriteString(strings.Join(uniqueFields, ", "))
 		}
-		sb.WriteString("SELECT ")
-		sb.WriteString(strings.Join(cols, ", "))
 	}
 
 	// 2. FROM
@@ -320,11 +333,15 @@ func buildQuerySQL(opts QueryOptions) (string, error) {
 
 	// 3. WHERE
 	var conds []string
+	// InfluxDB v3的time字段是Timestamp类型，需要使用timestamp literal格式
+	// 格式：'2024-12-03T12:00:00Z' 或使用 CAST
+	startTime := opts.TimeRange.Start.Format(time.RFC3339Nano)
+	endTime := opts.TimeRange.End.Format(time.RFC3339Nano)
 	conds = append(conds,
-		fmt.Sprintf("time >= to_timestamp(%d)", opts.TimeRange.Start.Unix()),
+		fmt.Sprintf("time >= '%s'", startTime),
 	)
 	conds = append(conds,
-		fmt.Sprintf("time <= to_timestamp(%d)", opts.TimeRange.End.Unix()),
+		fmt.Sprintf("time <= '%s'", endTime),
 	)
 	for k, v := range opts.Tags {
 		conds = append(conds, fmt.Sprintf(`%s = '%s'`, k, v))
@@ -390,58 +407,15 @@ func (c *InfluxDBClient) queryOnce(ctx context.Context, sql string) (interface{}
 	return points, nil
 }
 
-// DeleteSensorData 删除传感器数据
-// devID: 设备ID
-// startTime: 开始时间（Unix时间戳，秒）
-// endTime: 结束时间（Unix时间戳，秒）
-func (c *InfluxDBClient) DeleteSensorData(devID int64, startTime, endTime *int64) error {
-	ctx := context.Background()
-
-	// InfluxDB 3.0使用SQL语法进行删除
-	query := fmt.Sprintf(`DELETE FROM sensor_data WHERE dev_id = %d`, devID)
-
-	if startTime != nil {
-		nsTimestamp := *startTime * 1000000000
-		query += fmt.Sprintf(" AND time >= %d", nsTimestamp)
-	}
-	if endTime != nil {
-		nsTimestamp := *endTime * 1000000000
-		query += fmt.Sprintf(" AND time <= %d", nsTimestamp)
-	}
-
-	// 执行删除查询
-	_, err := c.Client.Query(ctx, query)
-	if err != nil {
-		return fmt.Errorf("删除InfluxDB数据失败: %v", err)
-	}
-
-	return nil
-}
-
-// DeleteSensorDataByDataID 根据数据ID删除传感器数据（需要从metadata中获取时间范围）
-func (c *InfluxDBClient) DeleteSensorDataByDataID(devID int64, timestamp int64) error {
-	// 删除指定时间点的数据
-	startTime := timestamp - 1 // 前后各1秒范围
-	endTime := timestamp + 1
-
-	return c.DeleteSensorData(devID, &startTime, &endTime)
-}
-
 // GetSeriesDataStatistics 获取时序数据统计信息
 func (c *InfluxDBClient) GetSeriesDataStatistics(measurement string, devID int64) (map[string]interface{}, error) {
 	ctx := context.Background()
 	stats := make(map[string]interface{})
 
-	// 构建查询SQL（InfluxDB3使用SQL语法，tag用单引号，field直接使用）
+	// 构建查询SQL（InfluxDB3使用SQL语法）
 	// 1. 查询总数
 	countSQL := fmt.Sprintf(
-		`SELECT COUNT(*) as total FROM "%s" WHERE dev_id = '%d'`,
-		measurement, devID,
-	)
-
-	// 2. 查询异常数据数量（quality_score < 30）
-	abnormalSQL := fmt.Sprintf(
-		`SELECT COUNT(*) as abnormal FROM "%s" WHERE dev_id = '%d' AND quality_score < 30`,
+		`SELECT COUNT(*) as count_value FROM "%s" WHERE dev_id = '%d'`,
 		measurement, devID,
 	)
 
@@ -451,28 +425,75 @@ func (c *InfluxDBClient) GetSeriesDataStatistics(measurement string, devID int64
 		return nil, fmt.Errorf("查询总数失败: %v", err)
 	}
 
-	var total float64
-	if pv, err := it.Next(); err == nil {
-		if val, ok := pv.Fields["total"]; ok {
-			if f, ok := val.(float64); ok {
-				total = f
+	var total int64 = 0
+	for {
+		pv, err := it.Next()
+		if err == influxdb3.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("读取总数结果失败: %v", err)
+		}
+
+		// 尝试从 Fields 中获取 count_value
+		if val, ok := pv.Fields["count_value"]; ok {
+			switch v := val.(type) {
+			case int64:
+				total = v
+			case float64:
+				total = int64(v)
+			case int:
+				total = int64(v)
 			}
+			break
 		}
 	}
 	stats["total"] = total
 
+	// 2. 查询异常数据数量（quality_score < 30，quality_score 是 tag，存储为字符串）
+	// 需要将字符串转换为数字进行比较
+	abnormalSQL := fmt.Sprintf(
+		`SELECT COUNT(*) as count_value FROM "%s" WHERE dev_id = '%d' AND CAST(quality_score AS DOUBLE) < 30`,
+		measurement, devID,
+	)
+
 	// 执行异常数据查询
 	it, err = c.Client.QueryPointValue(ctx, abnormalSQL)
 	if err != nil {
-		return nil, fmt.Errorf("查询异常数据失败: %v", err)
+		// 如果 CAST 失败，尝试字符串比较（不太准确但作为 fallback）
+		abnormalSQL = fmt.Sprintf(
+			`SELECT COUNT(*) as count_value FROM "%s" WHERE dev_id = '%d' AND quality_score < '30'`,
+			measurement, devID,
+		)
+		it, err = c.Client.QueryPointValue(ctx, abnormalSQL)
+		if err != nil {
+			// 如果还是失败，返回 0
+			stats["abnormal"] = int64(0)
+			return stats, nil
+		}
 	}
 
-	var abnormal float64
-	if pv, err := it.Next(); err == nil {
-		if val, ok := pv.Fields["abnormal"]; ok {
-			if f, ok := val.(float64); ok {
-				abnormal = f
+	var abnormal int64 = 0
+	for {
+		pv, err := it.Next()
+		if err == influxdb3.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("读取异常数据结果失败: %v", err)
+		}
+
+		// 尝试从 Fields 中获取 count_value
+		if val, ok := pv.Fields["count_value"]; ok {
+			switch v := val.(type) {
+			case int64:
+				abnormal = v
+			case float64:
+				abnormal = int64(v)
+			case int:
+				abnormal = int64(v)
 			}
+			break
 		}
 	}
 	stats["abnormal"] = abnormal

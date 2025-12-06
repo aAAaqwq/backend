@@ -53,12 +53,33 @@ func (r *UserRepository) UpdateUser(user *model.User) error {
 	return nil
 }
 
+// DeleteUser 删除用户（级联删除user_dev中的绑定关系）
 func (r *UserRepository) DeleteUser(uid int64) error {
-	_, err := mysql.MysqlCli.Client.Exec("DELETE FROM user WHERE uid = ?", uid)
+	// 开启事务
+	tx, err := mysql.MysqlCli.Client.Begin()
 	if err != nil {
 		return err
 	}
-	return nil
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// 1. 先删除user_dev表中的绑定关系
+	_, err = tx.Exec("DELETE FROM user_dev WHERE uid = ?", uid)
+	if err != nil {
+		return err
+	}
+
+	// 2. 再删除user表中的用户记录
+	_, err = tx.Exec("DELETE FROM user WHERE uid = ?", uid)
+	if err != nil {
+		return err
+	}
+
+	// 提交事务
+	return tx.Commit()
 }
 
 func (r *UserRepository) GetUserByUID(uid int64) (*model.User, error) {

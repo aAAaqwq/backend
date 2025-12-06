@@ -141,10 +141,33 @@ func (r *DeviceRepository) UpdateDevice(device *model.Device) error {
 	return err
 }
 
-// DeleteDevice 删除设备
+// DeleteDevice 删除设备（级联删除user_dev中的绑定关系）
 func (r *DeviceRepository) DeleteDevice(devID int64) error {
-	_, err := mysql.MysqlCli.Client.Exec("DELETE FROM device WHERE dev_id = ?", devID)
-	return err
+	// 开启事务
+	tx, err := mysql.MysqlCli.Client.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// 1. 先删除user_dev表中的绑定关系
+	_, err = tx.Exec("DELETE FROM user_dev WHERE dev_id = ?", devID)
+	if err != nil {
+		return err
+	}
+
+	// 2. 再删除device表中的设备记录
+	_, err = tx.Exec("DELETE FROM device WHERE dev_id = ?", devID)
+	if err != nil {
+		return err
+	}
+
+	// 提交事务
+	return tx.Commit()
 }
 
 // GetDeviceStatistics 获取设备统计信息

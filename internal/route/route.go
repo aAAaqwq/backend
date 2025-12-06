@@ -37,13 +37,13 @@ func RegisterRoutes(router *gin.Engine) {
 
 		// sensor data相关接口
 		sensorDataHandler := handler.NewSensorDataHandler()
-		api.POST("/device/data", sensorDataHandler.UploadSensorData) // 统一上传接口，根据data_type判断是时序数据还是文件数据
-		api.GET("/device/data/timeseries", sensorDataHandler.GetSeriesData)
-		api.DELETE("/device/data/timeseries", sensorDataHandler.DeleteSeriesData)
-		api.GET("/device/data/statistic", sensorDataHandler.GetSensorDataStatistic)
-		api.GET("/device/data/file/list", sensorDataHandler.GetFileList)
-		api.GET("/device/data/file/download", sensorDataHandler.DownloadFile)
-		api.DELETE("/device/data/file", sensorDataHandler.DeleteFileData)
+		api.POST("/device/data", middleware.JWTAuthMiddleware(), sensorDataHandler.UploadSensorData) // 统一上传接口，根据data_type判断是时序数据还是文件数据
+		api.POST("/device/data/timeseries", middleware.JWTAuthMiddleware(), sensorDataHandler.GetSeriesData)
+		api.DELETE("/device/data/timeseries", middleware.JWTAuthMiddleware(), sensorDataHandler.DeleteSeriesData)
+		api.GET("/device/data/statistic", middleware.JWTAuthMiddleware(), sensorDataHandler.GetSensorDataStatistic)
+		api.GET("/device/data/file/list", middleware.JWTAuthMiddleware(), sensorDataHandler.GetFileList)
+		api.GET("/device/data/file/download", middleware.JWTAuthMiddleware(), sensorDataHandler.DownloadFile)
+		api.DELETE("/device/data/file", middleware.JWTAuthMiddleware(), sensorDataHandler.DeleteFileData)
 
 		// warning info相关接口
 		warningHandler := handler.NewWarningInfoHandler()

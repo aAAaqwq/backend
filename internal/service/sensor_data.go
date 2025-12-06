@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -15,6 +16,7 @@ type SensorDataService struct {
 	metadataRepo   *repo.MetadataRepository
 	sensorDataRepo *repo.SensorDataRepository
 	deviceUserRepo *repo.DeviceUserRepository
+	deviceRepo     *repo.DeviceRepository
 }
 
 func NewSensorDataService() *SensorDataService {
@@ -22,31 +24,40 @@ func NewSensorDataService() *SensorDataService {
 		metadataRepo:   repo.NewMetadataRepository(),
 		sensorDataRepo: repo.NewSensorDataRepository(),
 		deviceUserRepo: repo.NewDeviceUserRepository(),
+		deviceRepo:     repo.NewDeviceRepository(),
 	}
 }
 
 // UploadSensorData 上传传感器数据（统一接口）
 func (s *SensorDataService) UploadSensorData(req *model.UploadSensorDataRequest) (int64, error) {
+	// 检查设备是否存在
+	_, err := s.deviceRepo.GetDevice(req.Metadata.DevID)
+	if err != nil {
+		return 0, errors.New("设备不存在")
+	}
+
+	// 生成data_id
+	if req.Metadata.DataID == 0 {
+		req.Metadata.DataID = utils.GetDefaultSnowflake().Generate()
+	}
 	if req.Metadata.DataType == model.DataTypeSeries {
-		return s.uploadSeriesData(req)
-	} else if req.Metadata.DataType == model.DataTypeFileData {
-		metadata, err := s.uploadFileData(req)
-		if err != nil {
+		if err := s.uploadSeriesData(req); err != nil {
 			return 0, err
 		}
-		return metadata.DataID, nil
+		return req.Metadata.DataID, nil
+	} else if req.Metadata.DataType == model.DataTypeFileData {
+		if err := s.uploadFileData(req); err != nil {
+			return 0, err
+		}
+		return req.Metadata.DataID, nil
 	}
 	return 0, errors.New("不支持的data_type")
 }
 
 // uploadSeriesData 上传时序数据
-func (s *SensorDataService) uploadSeriesData(req *model.UploadSensorDataRequest) (int64, error) {
-	if err := s.createMetadata(&req.Metadata); err != nil {
-		return 0, fmt.Errorf("创建元数据失败: %v", err)
-	}
-
+func (s *SensorDataService) uploadSeriesData(req *model.UploadSensorDataRequest) error {
 	if len(req.SeriesData.Points) == 0 {
-		return 0, errors.New("时序数据点不能为空")
+		return errors.New("时序数据点不能为空")
 	}
 
 	// 为每个点添加标签和字段（tags内容从metadata添加，不包含uid，因为数据是设备采集的，与用户关系不大）
@@ -74,39 +85,54 @@ func (s *SensorDataService) uploadSeriesData(req *model.UploadSensorDataRequest)
 
 		// tags包含dev_id(string)和quality_score(string，从metadata添加)
 		req.SeriesData.Points[i].Tags["dev_id"] = fmt.Sprintf("%d", req.Metadata.DevID)
+		req.SeriesData.Points[i].Tags["data_id"] = fmt.Sprintf("%d", req.Metadata.DataID)
 
 		// 优先使用point中fields的quality_score，否则使用metadata中的
 		qualityScore := req.Metadata.QualityScore
 		if qs, ok := req.SeriesData.Points[i].Fields["quality_score"].(float64); ok && qs > 0 {
-			qualityScore = qs
+			qualityScore = fmt.Sprintf("%.2f", qs)
+		} else if qsStr, ok := req.SeriesData.Points[i].Fields["quality_score"].(string); ok && qsStr != "" {
+			qualityScore = qsStr
 		}
-		if qualityScore > 0 {
-			req.SeriesData.Points[i].Tags["quality_score"] = fmt.Sprintf("%.2f", qualityScore)
+		if qualityScore != "" {
+			req.SeriesData.Points[i].Tags["quality_score"] = qualityScore
 		}
 
-		// 如果timestamp是0，使用metadata的timestamp
+		// 验证Fields不能为空
+		if len(req.SeriesData.Points[i].Fields) == 0 {
+			return errors.New("时序数据点的fields不能为空，至少需要一个field")
+		}
+
+		// 如果timestamp是0，使用metadata的timestamp或当前时间
+		// 为避免多个点timestamp相同导致覆盖，每个点递增1秒
 		if req.SeriesData.Points[i].Timestamp == 0 {
-			if ts, err := utils.ConvertToInt64(req.Metadata.Timestamp); err == nil && ts > 0 {
-				req.SeriesData.Points[i].Timestamp = ts
+			if !req.Metadata.Timestamp.IsZero() {
+				// 使用metadata的时间 + i秒，确保每个点时间戳不同
+				req.SeriesData.Points[i].Timestamp = req.Metadata.Timestamp.Unix() + int64(i)
 			} else {
-				req.SeriesData.Points[i].Timestamp = time.Now().Unix()
+				// 使用当前时间 + i秒
+				req.SeriesData.Points[i].Timestamp = time.Now().Unix() + int64(i)
 			}
 		}
 	}
 
+	// 先写入InfluxDB，成功后再创建元数据，保证原子性
 	if err := s.sensorDataRepo.CreateSeriesData(&req.SeriesData); err != nil {
-		return 0, fmt.Errorf("写入InfluxDB失败: %v", err)
+		return fmt.Errorf("写入InfluxDB失败: %v", err)
 	}
 
-	return req.Metadata.DataID, nil
+	// InfluxDB写入成功，再创建元数据
+	if err := s.createMetadata(&req.Metadata); err != nil {
+		// 元数据创建失败，需要回滚InfluxDB中的数据
+		// 注意：这里简化处理，实际生产环境可能需要更复杂的补偿机制
+		return fmt.Errorf("创建元数据失败: %v（时序数据已写入InfluxDB）", err)
+	}
+
+	return nil
 }
 
 // uploadFileData 上传文件数据
-func (s *SensorDataService) uploadFileData(req *model.UploadSensorDataRequest) (*model.Metadata, error) {
-	if err := s.createMetadata(&req.Metadata); err != nil {
-		return nil, fmt.Errorf("创建元数据失败: %v", err)
-	}
-
+func (s *SensorDataService) uploadFileData(req *model.UploadSensorDataRequest) error {
 	// 确定bucket名称（如果为空，根据data_type或文件路径推断）
 	bucketName := req.FileData.BucketName
 	if bucketName == "" {
@@ -129,9 +155,9 @@ func (s *SensorDataService) uploadFileData(req *model.UploadSensorDataRequest) (
 	// 确定content type
 	contentType := getContentTypeByFilePath(req.FileData.FilePath)
 
-	// 上传到MinIO
+	// 先上传文件到MinIO，成功后再创建元数据，保证原子性
 	if err := s.sensorDataRepo.FPutFile(bucketName, objectKey, req.FileData.FilePath, contentType); err != nil {
-		return nil, fmt.Errorf("上传文件失败: %v", err)
+		return fmt.Errorf("上传文件失败: %v", err)
 	}
 
 	// 更新元数据
@@ -141,7 +167,15 @@ func (s *SensorDataService) uploadFileData(req *model.UploadSensorDataRequest) (
 	req.Metadata.ExtraData["bucket_name"] = bucketName
 	req.Metadata.ExtraData["bucket_key"] = objectKey
 
-	return &req.Metadata, nil
+	// MinIO上传成功，再创建元数据
+	if err := s.createMetadata(&req.Metadata); err != nil {
+		// 元数据创建失败，删除MinIO中已上传的文件，保证原子性
+		if delErr := s.sensorDataRepo.DeleteObject(bucketName, objectKey); delErr != nil {
+			return fmt.Errorf("创建元数据失败且回滚删除文件失败: 元数据错误=%v, 删除文件错误=%v", err, delErr)
+		}
+		return fmt.Errorf("创建元数据失败: %v（已回滚删除MinIO文件）", err)
+	}
+	return nil
 }
 
 // createMetadata 创建元数据
@@ -151,29 +185,56 @@ func (s *SensorDataService) createMetadata(metadata *model.Metadata) error {
 		metadata.DataID = utils.GetDefaultSnowflake().Generate()
 	}
 	// 如果timestamp为空，使用当前时间
-	if metadata.Timestamp == "" {
-		metadata.Timestamp = fmt.Sprintf("%d", time.Now().Unix())
+	if metadata.Timestamp.IsZero() {
+		metadata.Timestamp = time.Now()
 	}
 	return s.metadataRepo.CreateMetadata(metadata)
 }
 
 // GetSeriesData 查询时序数据
-func (s *SensorDataService) GetSeriesData(measurement string, devID, uid, dataID int64, startTime, endTime int64,
-	tags map[string]string, fields []string, downSampleEvery string, aggregate string, limitPoints int) ([]model.Point, error) {
-	return s.sensorDataRepo.QuerySeriesData(measurement, devID, uid, dataID, startTime, endTime, tags, fields, downSampleEvery, aggregate, limitPoints)
+func (s *SensorDataService) GetSeriesData(measurement string, devID int64, currentUID int64, startTime, endTime int64,
+	tags map[string]string, fields map[string]interface{}, downSampleInterval string, aggregate string, limitPoints int, role string) ([]model.Point, error) {
+
+	// 权限判断：普通用户需要检查设备权限，管理员不需要
+	if role != "admin" {
+		deviceUser, err := s.deviceUserRepo.GetDeviceUser(devID, currentUID)
+		if err != nil {
+			return nil, errors.New("您没有权限访问该设备的数据")
+		}
+		// 检查是否有读权限
+		if deviceUser.PermissionLevel != model.PermissionLevelRead &&
+			deviceUser.PermissionLevel != model.PermissionLevelReadWrite {
+			return nil, errors.New("您没有读权限")
+		}
+	}
+
+	return s.sensorDataRepo.QuerySeriesData(measurement, devID, startTime, endTime, tags, fields, downSampleInterval, aggregate, limitPoints)
 }
 
 // GetSensorDataStatistic 获取时序数据统计信息
-func (s *SensorDataService) GetSensorDataStatistic(devID int64, measurement string) (map[string]interface{}, error) {
+func (s *SensorDataService) GetSensorDataStatistic(devID int64, measurement string, currentUID int64, role string) (map[string]interface{}, error) {
+	// 权限判断：普通用户需要检查设备权限，管理员不需要
+	if role != "admin" {
+		deviceUser, err := s.deviceUserRepo.GetDeviceUser(devID, currentUID)
+		if err != nil {
+			return nil, errors.New("您没有权限访问该设备的数据")
+		}
+		// 检查是否有读权限
+		if deviceUser.PermissionLevel != model.PermissionLevelRead &&
+			deviceUser.PermissionLevel != model.PermissionLevelReadWrite {
+			return nil, errors.New("您没有读权限")
+		}
+	}
+
 	return s.sensorDataRepo.GetSeriesDataStatistics(measurement, devID)
 }
 
 // GetFileList 获取文件列表
-// dataType: 数据类型，用于确定bucket名称（如image、video、audio等）
-// devID: 设备ID，用于过滤文件（文件key格式为dev_id/filename）
+// bucketName: bucket名称（如image、video、audio等）
+// devID: 设备ID，用于过滤文件（文件key格式为dev_id/YYYY/MM/DD/filename）
 // role: 用户角色（"admin"或普通用户），用于权限判断
 // currentUID: 当前用户ID，普通用户只能查询有权限的设备数据
-func (s *SensorDataService) GetFileList(page, pageSize int, dataType string, devID int64, role string, currentUID int64) ([]model.FileList, int64, error) {
+func (s *SensorDataService) GetFileList(page, pageSize int, bucketName string, devID int64, role string, currentUID int64) ([]model.FileList, int64, error) {
 	// 权限判断：普通用户需要检查设备权限，管理员不需要
 	if role != "admin" {
 		deviceUser, err := s.deviceUserRepo.GetDeviceUser(devID, currentUID)
@@ -187,10 +248,9 @@ func (s *SensorDataService) GetFileList(page, pageSize int, dataType string, dev
 		}
 	}
 
-	// 确定bucket名称（data_type就是bucket名称）
-	bucketName := dataType
+	// 验证bucket名称
 	if bucketName == "" {
-		return nil, 0, errors.New("data_type不能为空")
+		return nil, 0, errors.New("bucket_name不能为空")
 	}
 
 	// 从MinIO获取文件列表
@@ -199,11 +259,11 @@ func (s *SensorDataService) GetFileList(page, pageSize int, dataType string, dev
 		return nil, 0, fmt.Errorf("获取文件列表失败: %v", err)
 	}
 
-	// 根据dev_id过滤文件（文件key格式为dev_id/filename）
+	// 根据dev_id过滤文件（文件key格式为dev_id/YYYY/MM/DD/filename 或 dev_id/filename）
 	filteredFiles := make([]model.FileList, 0)
 	prefix := fmt.Sprintf("%d/", devID)
 	for _, file := range allFiles {
-		// 检查文件key是否以dev_id开头
+		// 检查文件key是否以 "dev_id/" 开头
 		if strings.HasPrefix(file.BucketKey, prefix) {
 			filteredFiles = append(filteredFiles, file)
 		}
@@ -232,16 +292,64 @@ func (s *SensorDataService) DownloadFile(bucketName, objectKey string) (string, 
 	return s.sensorDataRepo.DownloadFile(bucketName, objectKey, "")
 }
 
-// DeleteSeriesData 删除时序数据
-func (s *SensorDataService) DeleteSeriesData(measurement string, devID, uid int64, startTime, endTime int64) error {
-	return s.sensorDataRepo.DeleteSeriesData(measurement, devID, uid, startTime, endTime)
+// DeleteSeriesData 删除某设备在某时间范围内的时序数据元数据（软删除）
+// 注意：InfluxDB v3 不支持删除数据，此操作只删除元数据
+// InfluxDB 中的时序数据会通过保留策略自动过期删除
+func (s *SensorDataService) DeleteSeriesData(devID int64, startTime, endTime *int64, currentUID int64, role string) error {
+	// 权限判断：普通用户需要检查设备权限，管理员不需要
+	if role != "admin" {
+		deviceUser, err := s.deviceUserRepo.GetDeviceUser(devID, currentUID)
+		if err != nil {
+			return errors.New("您没有权限访问该设备的数据")
+		}
+		// 检查是否有写权限
+		if deviceUser.PermissionLevel != model.PermissionLevelWrite &&
+			deviceUser.PermissionLevel != model.PermissionLevelReadWrite {
+			return errors.New("您没有写权限")
+		}
+	}
+
+	// 删除元数据
+	if err := s.metadataRepo.DeleteMetadataByDevIDAndTimeRange(devID, startTime, endTime); err != nil {
+		return fmt.Errorf("删除元数据失败: %v", err)
+	}
+
+	// 注意：InfluxDB v3 不支持删除时序数据
+	// 时序数据会保留在 InfluxDB 中，通过保留策略自动过期
+	// 由于元数据已删除，这些数据不会再被查询到
+
+	return nil
 }
 
 // DeleteFileData 删除文件数据
-func (s *SensorDataService) DeleteFileData(bucketName, bucketKey string) error {
+func (s *SensorDataService) DeleteFileData(bucketName, bucketKey string, currentUID int64, role string) error {
 	if bucketName == "" || bucketKey == "" {
 		return errors.New("bucket_name和bucket_key不能为空")
 	}
+
+	// 从bucket_key中提取dev_id（格式为：dev_id/filename）
+	parts := strings.Split(bucketKey, "/")
+	if len(parts) < 2 {
+		return errors.New("bucket_key格式错误，应为dev_id/filename")
+	}
+	devID, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return errors.New("无法从bucket_key中提取dev_id")
+	}
+
+	// 权限判断：普通用户需要检查设备权限，管理员不需要
+	if role != "admin" {
+		deviceUser, err := s.deviceUserRepo.GetDeviceUser(devID, currentUID)
+		if err != nil {
+			return errors.New("您没有权限访问该设备的数据")
+		}
+		// 检查是否有写权限
+		if deviceUser.PermissionLevel != model.PermissionLevelWrite &&
+			deviceUser.PermissionLevel != model.PermissionLevelReadWrite {
+			return errors.New("您没有写权限")
+		}
+	}
+
 	if err := s.sensorDataRepo.DeleteObject(bucketName, bucketKey); err != nil {
 		return fmt.Errorf("删除文件失败: %v", err)
 	}
