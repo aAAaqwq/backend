@@ -104,7 +104,7 @@ func InitConfig(path string) (*Config, error) {
 	v := viper.New()
 
 	if path == "" {
-		path = "./config/prod.yaml"
+		path = "./config/dev.yaml"
 	}
 	v.SetConfigFile(path) // 绝对/相对路径都可
 	if err := v.ReadInConfig(); err != nil {

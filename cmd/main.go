@@ -103,7 +103,7 @@ func Init(cfg *config.Config) error {
 
 func main() {
 	//  初始化配置
-	cfg, err := config.InitConfig("./config/dev.yaml")
+	cfg, err := config.InitConfig("./config/prod.yaml")
 	if err != nil {
 		fmt.Println("加载配置失败", err)
 		os.Exit(1)
