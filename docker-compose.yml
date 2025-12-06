@@ -79,7 +79,7 @@ services:
         condition: service_healthy
     ports: ["12000:12000"]
     volumes:
-      - ./config/dev.yaml:/app/config/dev.yaml
+      - ./config/prod.yaml:/app/config/prod.yaml
     networks: [sensor_data_hub_network]
 
 networks:
