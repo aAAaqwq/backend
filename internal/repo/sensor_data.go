@@ -6,6 +6,7 @@ import (
 	"backend/internal/model"
 	"context"
 	"fmt"
+	"io"
 	"time"
 )
 
@@ -19,13 +20,25 @@ func NewSensorDataRepository() *SensorDataRepository {
 	return &SensorDataRepository{}
 }
 
-// FPutFile 上传文件到MinIO
+// FPutFile 上传文件到MinIO（从本地文件路径）
 func (r *SensorDataRepository) FPutFile(bucketName, objectName, filePath, contentType string) error {
 	if minio.MinIOCli == nil {
 		return nil // MinIO未初始化时返回nil
 	}
 	err := minio.MinIOCli.UploadFile(bucketName, objectName, filePath, contentType)
 	return err
+}
+
+// PutFile 上传文件到MinIO
+func (r *SensorDataRepository) PutFile(bucketName, objectName string, reader any, objectSize int64, contentType string) error {
+	if minio.MinIOCli == nil {
+		return fmt.Errorf("MinIO客户端未初始化")
+	}
+	// reader需要转换为io.Reader类型
+	if r, ok := reader.(io.Reader); ok {
+		return minio.MinIOCli.PutObjectFromReader(bucketName, objectName, r, objectSize, contentType)
+	}
+	return fmt.Errorf("reader类型错误，需要io.Reader")
 }
 
 // DownloadFile 从MinIO下载文件到本地
@@ -83,9 +96,26 @@ func (r *SensorDataRepository) DeleteObject(bucketName, objectName string) error
 	return minio.MinIOCli.DeleteObject(bucketName, objectName)
 }
 
+// PresignedPutObject 生成预签名PUT URL（用于客户端直接上传）
+func (r *SensorDataRepository) PresignedPutObject(bucketName, objectName string, expiry time.Duration) (string, error) {
+	if minio.MinIOCli == nil {
+		return "", fmt.Errorf("MinIO客户端未初始化")
+	}
+	return minio.MinIOCli.PresignedPutObject(bucketName, objectName, expiry)
+}
+
+// GetObjectInfo 获取文件信息
+func (r *SensorDataRepository) GetObjectInfo(bucketName, objectName string) (any, error) {
+	if minio.MinIOCli == nil {
+		return nil, fmt.Errorf("MinIO客户端未初始化")
+	}
+	return minio.MinIOCli.GetObjectInfo(bucketName, objectName)
+}
+
+
 // QuerySeriesData 查询时序数据
 func (r *SensorDataRepository) QuerySeriesData(measurement string, devID int64, startTime, endTime int64,
-	tags map[string]string, fields map[string]interface{}, downSampleInterval string, aggregate string, limitPoints int) ([]model.Point, error) {
+	tags map[string]string, fields map[string]any, downSampleInterval string, aggregate string, limitPoints int) ([]model.Point, error) {
 	if influxdb.InfluxDBCli == nil {
 		return nil, fmt.Errorf("InfluxDB客户端未初始化")
 	}
@@ -116,12 +146,10 @@ func (r *SensorDataRepository) QuerySeriesData(measurement string, devID int64, 
 		}
 	}
 
-	// 将fields转换为[]string（如果不为nil）
+	// 将fields转换为[]string
 	var fieldNames []string
-	if fields != nil {
-		for fieldName := range fields {
-			fieldNames = append(fieldNames, fieldName)
-		}
+	for fieldName := range fields {
+		fieldNames = append(fieldNames, fieldName)
 	}
 
 	// 构建查询选项
@@ -151,7 +179,7 @@ func (r *SensorDataRepository) QuerySeriesData(measurement string, devID int64, 
 }
 
 // GetSeriesDataStatistics 获取时序数据统计信息
-func (r *SensorDataRepository) GetSeriesDataStatistics(measurement string, devID int64) (map[string]interface{}, error) {
+func (r *SensorDataRepository) GetSeriesDataStatistics(measurement string, devID int64) (map[string]any, error) {
 	if influxdb.InfluxDBCli == nil {
 		return nil, fmt.Errorf("InfluxDB客户端未初始化")
 	}

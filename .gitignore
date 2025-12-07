@@ -3,3 +3,5 @@ data
 doc
 
 .claude
+
+script/quick_deploy.sh

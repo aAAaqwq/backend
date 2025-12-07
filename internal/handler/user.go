@@ -212,11 +212,7 @@ func (h *UserHandler) GetUserDevices(c *gin.Context) {
 	}
 
 	Success(c, "获取用户设备列表成功", gin.H{
-		"items": []gin.H{
-			{
-				"dev_list": devices,
-			},
-		},
+		"items": devices,
 		"pagination": gin.H{
 			"page":        query.Page,
 			"page_size":   query.PageSize,

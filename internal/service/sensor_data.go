@@ -4,11 +4,14 @@ import (
 	"backend/internal/model"
 	"backend/internal/repo"
 	"backend/pkg/utils"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -17,6 +20,22 @@ type SensorDataService struct {
 	sensorDataRepo *repo.SensorDataRepository
 	deviceUserRepo *repo.DeviceUserRepository
 	deviceRepo     *repo.DeviceRepository
+	// 用于临时存储上传信息的map（生产环境应该使用Redis）
+	uploadSessions map[string]*UploadSession
+	mu             sync.RWMutex
+}
+
+// UploadSession 上传会话信息
+type UploadSession struct {
+	UploadID    string
+	DevID       int64
+	BucketName  string
+	BucketKey   string
+	Filename    string
+	ContentType string
+	UID         int64
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
 }
 
 func NewSensorDataService() *SensorDataService {
@@ -25,7 +44,90 @@ func NewSensorDataService() *SensorDataService {
 		sensorDataRepo: repo.NewSensorDataRepository(),
 		deviceUserRepo: repo.NewDeviceUserRepository(),
 		deviceRepo:     repo.NewDeviceRepository(),
+		uploadSessions: make(map[string]*UploadSession),
 	}
+}
+
+// GetPresignedPutURL 生成预签名PUT URL
+func (s *SensorDataService) GetPresignedPutURL(devID int64, filename, bucketName, contentType string, uid int64) (map[string]any, error) {
+	// 检查设备是否存在
+	_, err := s.deviceRepo.GetDevice(devID)
+	if err != nil {
+		return nil, errors.New("设备不存在")
+	}
+
+	// 确定bucket名称（如果为空，根据文件类型推断）
+	if bucketName == "" {
+		bucketName = getBucketNameByFilePath(filename)
+	}
+
+	// 生成object key（格式: dev_id/YYYY/MM/DD/filename）
+	now := time.Now()
+	objectKey := fmt.Sprintf("%d/%d/%02d/%02d/%s", devID, now.Year(), now.Month(), now.Day(), filename)
+
+	// 如果没有提供content_type，根据文件扩展名推断
+	if contentType == "" {
+		contentType = getContentTypeByFilePath(filename)
+	}
+
+	// 生成上传ID（使用MD5哈希）
+	uploadID := generateUploadID(devID, objectKey, uid)
+
+	// 生成预签名PUT URL（有效期15分钟）
+	presignedURL, err := s.sensorDataRepo.PresignedPutObject(bucketName, objectKey, 15*time.Minute)
+	if err != nil {
+		return nil, fmt.Errorf("生成预签名URL失败: %v", err)
+	}
+
+	// 保存上传会话信息（生产环境应该使用Redis）
+	session := &UploadSession{
+		UploadID:    uploadID,
+		DevID:       devID,
+		BucketName:  bucketName,
+		BucketKey:   objectKey,
+		Filename:    filename,
+		ContentType: contentType,
+		UID:         uid,
+		CreatedAt:   now,
+		ExpiresAt:   now.Add(30 * time.Minute), // 会话有效期30分钟
+	}
+
+	s.mu.Lock()
+	s.uploadSessions[uploadID] = session
+	s.mu.Unlock()
+
+	// 启动后台清理过期会话的goroutine
+	go s.cleanExpiredSessions()
+
+	return map[string]any{
+		"upload_id":     uploadID,
+		"upload_url":    presignedURL,
+		"bucket_name":   bucketName,
+		"bucket_key":    objectKey,
+		"content_type":  contentType,
+		"expires_in":    900,
+		"upload_method": "PUT",
+	}, nil
+}
+
+// cleanExpiredSessions 清理过期的上传会话
+func (s *SensorDataService) cleanExpiredSessions() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	for id, session := range s.uploadSessions {
+		if now.After(session.ExpiresAt) {
+			delete(s.uploadSessions, id)
+		}
+	}
+}
+
+// generateUploadID 生成上传ID
+func generateUploadID(devID int64, objectKey string, uid int64) string {
+	data := fmt.Sprintf("%d-%s-%d-%d", devID, objectKey, uid, time.Now().UnixNano())
+	hash := md5.Sum([]byte(data))
+	return hex.EncodeToString(hash[:])
 }
 
 // UploadSensorData 上传传感器数据（统一接口）
@@ -67,7 +169,7 @@ func (s *SensorDataService) uploadSeriesData(req *model.UploadSensorDataRequest)
 			req.SeriesData.Points[i].Tags = make(map[string]string)
 		}
 		if req.SeriesData.Points[i].Fields == nil {
-			req.SeriesData.Points[i].Fields = make(map[string]interface{})
+			req.SeriesData.Points[i].Fields = make(map[string]any)
 		}
 
 		// 设置measurement（从metadata的extra_data获取，或使用默认值）
@@ -131,50 +233,72 @@ func (s *SensorDataService) uploadSeriesData(req *model.UploadSensorDataRequest)
 	return nil
 }
 
-// uploadFileData 上传文件数据
+// uploadFileData 验证文件上传并创建元数据
 func (s *SensorDataService) uploadFileData(req *model.UploadSensorDataRequest) error {
-	// 确定bucket名称（如果为空，根据data_type或文件路径推断）
+	uploadID := req.FileData.UploadID
+	if uploadID == "" {
+		return errors.New("file_data.upload_id不能为空")
+	}
+
+	// 获取上传会话信息
+	s.mu.RLock()
+	session, exists := s.uploadSessions[uploadID]
+	s.mu.RUnlock()
+
+	if !exists {
+		return errors.New("无效的upload_id或上传会话已过期")
+	}
+
+	// 验证会话是否过期
+	if time.Now().After(session.ExpiresAt) {
+		s.mu.Lock()
+		delete(s.uploadSessions, uploadID)
+		s.mu.Unlock()
+		return errors.New("上传会话已过期")
+	}
+
+	// 验证设备ID匹配
+	if session.DevID != req.Metadata.DevID {
+		return errors.New("设备ID不匹配")
+	}
+
+	// 使用会话中的bucket信息（如果客户端指定了bucket_name，则使用客户端的）
 	bucketName := req.FileData.BucketName
 	if bucketName == "" {
-		// 优先使用data_type，否则根据文件路径推断
-		if req.Metadata.DataType != "" && req.Metadata.DataType != model.DataTypeFileData {
-			bucketName = req.Metadata.DataType
-		} else {
-			bucketName = getBucketNameByFilePath(req.FileData.FilePath)
-		}
+		bucketName = session.BucketName
 	}
 
-	// 确定object key（如果为空，创建默认的KEY: dev_id/YYYY/MM/DD/filename）
-	objectKey := req.FileData.BucketKey
-	if objectKey == "" {
-		filename := filepath.Base(req.FileData.FilePath)
-		now := time.Now()
-		objectKey = fmt.Sprintf("%d/%d/%02d/%02d/%s", req.Metadata.DevID, now.Year(), now.Month(), now.Day(), filename)
+	// 使用会话中的bucket_key（如果客户端指定了bucket_key，则使用客户端的）
+	bucketKey := req.FileData.BucketKey
+	if bucketKey == "" {
+		bucketKey = session.BucketKey
 	}
 
-	// 确定content type
-	contentType := getContentTypeByFilePath(req.FileData.FilePath)
-
-	// 先上传文件到MinIO，成功后再创建元数据，保证原子性
-	if err := s.sensorDataRepo.FPutFile(bucketName, objectKey, req.FileData.FilePath, contentType); err != nil {
-		return fmt.Errorf("上传文件失败: %v", err)
+	// 验证文件是否存在于MinIO（确认客户端上传成功）
+	_, err := s.sensorDataRepo.GetObjectInfo(bucketName, bucketKey)
+	if err != nil {
+		return fmt.Errorf("文件未找到，请确认是否上传成功: %v", err)
 	}
 
 	// 更新元数据
 	if req.Metadata.ExtraData == nil {
-		req.Metadata.ExtraData = make(map[string]interface{})
+		req.Metadata.ExtraData = make(map[string]any)
 	}
 	req.Metadata.ExtraData["bucket_name"] = bucketName
-	req.Metadata.ExtraData["bucket_key"] = objectKey
+	req.Metadata.ExtraData["bucket_key"] = bucketKey
+	req.Metadata.ExtraData["filename"] = session.Filename
+	req.Metadata.ExtraData["content_type"] = session.ContentType
 
-	// MinIO上传成功，再创建元数据
+	// 创建元数据
 	if err := s.createMetadata(&req.Metadata); err != nil {
-		// 元数据创建失败，删除MinIO中已上传的文件，保证原子性
-		if delErr := s.sensorDataRepo.DeleteObject(bucketName, objectKey); delErr != nil {
-			return fmt.Errorf("创建元数据失败且回滚删除文件失败: 元数据错误=%v, 删除文件错误=%v", err, delErr)
-		}
-		return fmt.Errorf("创建元数据失败: %v（已回滚删除MinIO文件）", err)
+		return fmt.Errorf("创建元数据失败: %v", err)
 	}
+
+	// 删除上传会话
+	s.mu.Lock()
+	delete(s.uploadSessions, uploadID)
+	s.mu.Unlock()
+
 	return nil
 }
 
@@ -193,7 +317,7 @@ func (s *SensorDataService) createMetadata(metadata *model.Metadata) error {
 
 // GetSeriesData 查询时序数据
 func (s *SensorDataService) GetSeriesData(measurement string, devID int64, currentUID int64, startTime, endTime int64,
-	tags map[string]string, fields map[string]interface{}, downSampleInterval string, aggregate string, limitPoints int, role string) ([]model.Point, error) {
+	tags map[string]string, fields map[string]any, downSampleInterval string, aggregate string, limitPoints int, role string) ([]model.Point, error) {
 
 	// 权限判断：普通用户需要检查设备权限，管理员不需要
 	if role != "admin" {
@@ -212,7 +336,7 @@ func (s *SensorDataService) GetSeriesData(measurement string, devID int64, curre
 }
 
 // GetSensorDataStatistic 获取时序数据统计信息
-func (s *SensorDataService) GetSensorDataStatistic(devID int64, measurement string, currentUID int64, role string) (map[string]interface{}, error) {
+func (s *SensorDataService) GetSensorDataStatistic(devID int64, measurement string, currentUID int64, role string) (map[string]any, error) {
 	// 权限判断：普通用户需要检查设备权限，管理员不需要
 	if role != "admin" {
 		deviceUser, err := s.deviceUserRepo.GetDeviceUser(devID, currentUID)

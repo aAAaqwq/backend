@@ -20,15 +20,14 @@ func NewSensorDataHandler() *SensorDataHandler {
 	return &SensorDataHandler{sensorDataService: service.NewSensorDataService()}
 }
 
-// UploadSensorData 上传传感器数据（统一接口，根据data_type判断是时序数据还是文件数据）
+// UploadSensorData 上传传感器数据
 func (h *SensorDataHandler) UploadSensorData(c *gin.Context) {
-	req := &model.UploadSensorDataRequest{}
-	if err := c.ShouldBindJSON(req); err != nil {
+	var req model.UploadSensorDataRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		Error(c, CodeBadRequest, err.Error())
 		return
 	}
 
-	// 参数验证
 	if req.Metadata.DataType == "" {
 		Error(c, CodeBadRequest, "metadata.data_type不能为空")
 		return
@@ -37,22 +36,16 @@ func (h *SensorDataHandler) UploadSensorData(c *gin.Context) {
 		Error(c, CodeBadRequest, "metadata.dev_id不能为空")
 		return
 	}
-	if req.Metadata.DataType == model.DataTypeSeries {
-		if len(req.SeriesData.Points) == 0 {
-			Error(c, CodeBadRequest, "时序数据点不能为空")
-			return
-		}
-	} else if req.Metadata.DataType == model.DataTypeFileData {
-		if req.FileData.FilePath == "" {
-			Error(c, CodeBadRequest, "file_data.file_path不能为空")
-			return
-		}
+	if req.Metadata.DataType == model.DataTypeSeries && len(req.SeriesData.Points) == 0 {
+		Error(c, CodeBadRequest, "时序数据点不能为空")
+		return
+	}
+	if req.Metadata.DataType == model.DataTypeFileData && req.FileData.UploadID == "" {
+		Error(c, CodeBadRequest, "file_data.upload_id不能为空")
+		return
 	}
 
-	var dataID int64
-	var err error
-
-	dataID, err = h.sensorDataService.UploadSensorData(req)
+	dataID, err := h.sensorDataService.UploadSensorData(&req)
 	if err != nil {
 		logger.L().Error("上传传感器数据失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())
@@ -60,6 +53,36 @@ func (h *SensorDataHandler) UploadSensorData(c *gin.Context) {
 	}
 
 	SuccessWithCode(c, 201, "上传传感器数据成功", gin.H{"data_id": dataID})
+}
+
+// GetPresignedPutURL 获取预签名PUT URL
+func (h *SensorDataHandler) GetPresignedPutURL(c *gin.Context) {
+	var req model.GetPresignedPutURLReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Error(c, CodeBadRequest, err.Error())
+		return
+	}
+
+	devID, err := utils.ConvertToInt64(req.DevID)
+	if err != nil || devID == 0 {
+		Error(c, CodeBadRequest, "dev_id无效")
+		return
+	}
+
+	currentUID, exists := middleware.GetCurrentUserID(c)
+	if !exists {
+		Error(c, CodeUnauthorized, "未认证")
+		return
+	}
+
+	result, err := h.sensorDataService.GetPresignedPutURL(devID, req.Filename, req.BucketName, req.ContentType, currentUID)
+	if err != nil {
+		logger.L().Error("生成预签名URL失败", logger.WithError(err))
+		Error(c, CodeInternalServerError, err.Error())
+		return
+	}
+
+	Success(c, "获取预签名PUT URL成功", result)
 }
 
 // GetSeriesData 查询时序数据
@@ -70,16 +93,13 @@ func (h *SensorDataHandler) GetSeriesData(c *gin.Context) {
 		return
 	}
 
-	// 从token中获取当前用户信息
 	currentUID, _ := middleware.GetCurrentUserID(c)
 	role, _ := middleware.GetCurrentUserRole(c)
 
-	// 设置默认限制点数
 	if req.LimitPoints <= 0 {
 		req.LimitPoints = 6000
 	}
 
-	// 确保tags中包含dev_id
 	if req.Tags == nil {
 		req.Tags = make(map[string]string)
 	}
@@ -106,7 +126,6 @@ func (h *SensorDataHandler) GetSensorDataStatistic(c *gin.Context) {
 		return
 	}
 
-	// 从token中获取当前用户信息
 	currentUID, _ := middleware.GetCurrentUserID(c)
 	role, _ := middleware.GetCurrentUserRole(c)
 
@@ -122,36 +141,20 @@ func (h *SensorDataHandler) GetSensorDataStatistic(c *gin.Context) {
 
 // GetFileList 获取文件列表
 func (h *SensorDataHandler) GetFileList(c *gin.Context) {
-	// 参数验证
 	page, _ := utils.ConvertToInt64(c.Query("page"))
 	pageSize, _ := utils.ConvertToInt64(c.Query("page_size"))
 	bucketName := c.Query("bucket_name")
-	devIDStr := c.Query("dev_id")
+	devID, _ := utils.ConvertToInt64(c.Query("dev_id"))
 
-	if page <= 0 {
-		Error(c, CodeBadRequest, "page必须大于0")
+	if page <= 0 || pageSize <= 0 {
+		Error(c, CodeBadRequest, "page和page_size必须大于0")
 		return
 	}
-	if pageSize <= 0 {
-		Error(c, CodeBadRequest, "page_size必须大于0")
-		return
-	}
-	if bucketName == "" {
-		Error(c, CodeBadRequest, "bucket_name不能为空")
-		return
-	}
-	if devIDStr == "" {
-		Error(c, CodeBadRequest, "dev_id不能为空")
+	if bucketName == "" || devID == 0 {
+		Error(c, CodeBadRequest, "bucket_name和dev_id不能为空")
 		return
 	}
 
-	devID, _ := utils.ConvertToInt64(devIDStr)
-	if devID == 0 {
-		Error(c, CodeBadRequest, "dev_id无效")
-		return
-	}
-
-	// 从token中获取用户角色和ID
 	role, _ := middleware.GetCurrentUserRole(c)
 	currentUID, _ := middleware.GetCurrentUserID(c)
 
@@ -198,8 +201,7 @@ func (h *SensorDataHandler) DownloadFile(c *gin.Context) {
 	Success(c, "获取下载URL成功", gin.H{"download_url": url})
 }
 
-// DeleteSeriesData 删除某设备在某时间范围内的时序数据元数据（软删除）
-// 注意：InfluxDB v3 不支持删除数据，此操作只删除元数据
+// DeleteSeriesData 删除时序数据元数据
 func (h *SensorDataHandler) DeleteSeriesData(c *gin.Context) {
 	var req model.DeleteSeriesDataRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -207,17 +209,14 @@ func (h *SensorDataHandler) DeleteSeriesData(c *gin.Context) {
 		return
 	}
 
-	// 验证 dev_id 参数
 	if req.DevID == 0 {
 		Error(c, CodeBadRequest, "dev_id不能为空")
 		return
 	}
 
-	// 从token中获取当前用户信息
 	currentUID, _ := middleware.GetCurrentUserID(c)
 	role, _ := middleware.GetCurrentUserRole(c)
 
-	// 解析时间字符串为Unix时间戳
 	var startTime, endTime *int64
 	if req.StartTime != "" {
 		st, err := utils.ParseTime(req.StartTime)
@@ -244,7 +243,7 @@ func (h *SensorDataHandler) DeleteSeriesData(c *gin.Context) {
 		return
 	}
 
-	Success(c, "删除时序数据元数据成功（时序数据将通过保留策略自动过期）", nil)
+	Success(c, "删除时序数据元数据成功", nil)
 }
 
 // DeleteFileData 删除文件数据
@@ -255,7 +254,6 @@ func (h *SensorDataHandler) DeleteFileData(c *gin.Context) {
 		return
 	}
 
-	// 从token中获取当前用户信息
 	currentUID, _ := middleware.GetCurrentUserID(c)
 	role, _ := middleware.GetCurrentUserRole(c)
 

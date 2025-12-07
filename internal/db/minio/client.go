@@ -230,3 +230,29 @@ func (c *MinIOClient) CreateBucket(bucketName string) error {
 	}
 	return nil
 }
+
+// PresignedPutObject 生成预签名PUT URL（用于客户端直接上传）
+// 返回一个预签名的URL，客户端可以直接使用该URL上传文件到MinIO
+func (c *MinIOClient) PresignedPutObject(bucketName, objectName string, expiry time.Duration) (string, error) {
+	ctx := context.Background()
+
+	// 确保bucket存在
+	exists, err := c.Client.BucketExists(ctx, bucketName)
+	if err != nil {
+		return "", fmt.Errorf("检查bucket失败: %v", err)
+	}
+	if !exists {
+		err = c.CreateBucket(bucketName)
+		if err != nil {
+			return "", fmt.Errorf("Bucket %s 不存在,创建bucket失败: %v", bucketName, err)
+		}
+	}
+
+	// 生成预签名PUT URL
+	presignedURL, err := c.Client.PresignedPutObject(ctx, bucketName, objectName, expiry)
+	if err != nil {
+		return "", fmt.Errorf("生成预签名PUT URL失败: %v", err)
+	}
+
+	return presignedURL.String(), nil
+}

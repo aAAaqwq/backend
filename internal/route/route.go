@@ -37,7 +37,8 @@ func RegisterRoutes(router *gin.Engine) {
 
 		// sensor data相关接口
 		sensorDataHandler := handler.NewSensorDataHandler()
-		api.POST("/device/data", middleware.JWTAuthMiddleware(), sensorDataHandler.UploadSensorData) // 统一上传接口，根据data_type判断是时序数据还是文件数据
+		api.POST("/device/data", middleware.JWTAuthMiddleware(), sensorDataHandler.UploadSensorData)
+		api.POST("/device/data/file/presigned_url", middleware.JWTAuthMiddleware(), sensorDataHandler.GetPresignedPutURL)
 		api.POST("/device/data/timeseries", middleware.JWTAuthMiddleware(), sensorDataHandler.GetSeriesData)
 		api.DELETE("/device/data/timeseries", middleware.JWTAuthMiddleware(), sensorDataHandler.DeleteSeriesData)
 		api.GET("/device/data/statistic", middleware.JWTAuthMiddleware(), sensorDataHandler.GetSensorDataStatistic)
@@ -47,10 +48,10 @@ func RegisterRoutes(router *gin.Engine) {
 
 		// warning info相关接口
 		warningHandler := handler.NewWarningInfoHandler()
-		api.POST("/warning_info", warningHandler.CreateWarningInfo)
-		api.GET("/warning_info", warningHandler.GetWarningInfoList)
-		api.PUT("/warning_info", warningHandler.UpdateWarningInfo)
-		api.DELETE("/warning_info", warningHandler.DeleteWarningInfo)
+		api.POST("/warning_info", middleware.JWTAuthMiddleware(), warningHandler.CreateWarningInfo)
+		api.GET("/warning_info", middleware.JWTAuthMiddleware(), warningHandler.GetWarningInfoList)
+		api.PUT("/warning_info", middleware.JWTAuthMiddleware(), warningHandler.UpdateWarningInfo)
+		api.DELETE("/warning_info", middleware.JWTAuthMiddleware(), warningHandler.DeleteWarningInfo)
 
 		// 日志相关接口
 		logHandler := handler.NewLogHandler()
