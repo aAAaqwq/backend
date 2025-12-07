@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"backend/internal/middleware"
 	"backend/internal/model"
 	"backend/internal/service"
 	"backend/pkg/logger"
@@ -35,8 +36,17 @@ func (h *WarningInfoHandler) CreateWarningInfo(c *gin.Context) {
 	SuccessWithCode(c, 201, "上传告警信息成功", warning)
 }
 
-// GetWarningInfoList 查询告警信息列表
+// GetWarningInfoList 查询告警信息列表（带权限控制）
 func (h *WarningInfoHandler) GetWarningInfoList(c *gin.Context) {
+	// 获取当前用户信息
+	uid, exists := middleware.GetCurrentUserID(c)
+	if !exists {
+		Error(c, CodeUnauthorized, "未认证")
+		return
+	}
+	role, _ := middleware.GetCurrentUserRole(c)
+
+	// 获取查询参数
 	page, _ := c.GetQuery("page")
 	pageSize, _ := c.GetQuery("page_size")
 	alertType, _ := c.GetQuery("alert_type")
@@ -68,7 +78,8 @@ func (h *WarningInfoHandler) GetWarningInfoList(c *gin.Context) {
 		}
 	}
 
-	warnings, total, err := h.warningService.GetWarningInfoList(int(pageInt), int(pageSizeInt), alertType, alertStatus, devID, dataID)
+	// 调用服务层，传入用户ID和角色进行权限控制
+	warnings, total, err := h.warningService.GetWarningInfoList(int(pageInt), int(pageSizeInt), alertType, alertStatus, devID, dataID, uid, role)
 	if err != nil {
 		logger.L().Error("查询告警信息列表失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())
@@ -110,8 +121,16 @@ func (h *WarningInfoHandler) GetWarningInfo(c *gin.Context) {
 	Success(c, "查询告警信息成功", warning)
 }
 
-// UpdateWarningInfo 更新告警信息
+// UpdateWarningInfo 更新告警信息（带权限控制）
 func (h *WarningInfoHandler) UpdateWarningInfo(c *gin.Context) {
+	// 获取当前用户信息
+	uid, exists := middleware.GetCurrentUserID(c)
+	if !exists {
+		Error(c, CodeUnauthorized, "未认证")
+		return
+	}
+	role, _ := middleware.GetCurrentUserRole(c)
+
 	// 从查询参数获取 alert_id 和 alert_status
 	alertIDStr := c.Query("alert_id")
 	alertStatus := c.Query("alert_status")
@@ -138,19 +157,31 @@ func (h *WarningInfoHandler) UpdateWarningInfo(c *gin.Context) {
 		return
 	}
 
-	// 调用服务层更新告警状态
-	warning, err := h.warningService.UpdateWarningStatus(alertID, alertStatus)
+	// 调用服务层更新告警状态，传入用户ID和角色进行权限控制
+	warning, err := h.warningService.UpdateWarningStatus(alertID, alertStatus, uid, role)
 	if err != nil {
 		logger.L().Error("更新告警信息失败", logger.WithError(err))
-		Error(c, CodeInternalServerError, err.Error())
+		if err.Error() == "您没有权限更新该告警信息" {
+			Error(c, CodeForbidden, err.Error())
+		} else {
+			Error(c, CodeInternalServerError, err.Error())
+		}
 		return
 	}
 
 	Success(c, "更新告警信息成功", warning)
 }
 
-// DeleteWarningInfo 删除告警信息
+// DeleteWarningInfo 删除告警信息（带权限控制）
 func (h *WarningInfoHandler) DeleteWarningInfo(c *gin.Context) {
+	// 获取当前用户信息
+	uid, exists := middleware.GetCurrentUserID(c)
+	if !exists {
+		Error(c, CodeUnauthorized, "未认证")
+		return
+	}
+	role, _ := middleware.GetCurrentUserRole(c)
+
 	// 从查询参数获取 alert_id
 	alertIDStr := c.Query("alert_id")
 	if alertIDStr == "" {
@@ -164,10 +195,15 @@ func (h *WarningInfoHandler) DeleteWarningInfo(c *gin.Context) {
 		return
 	}
 
-	err = h.warningService.DeleteWarningInfo(alertID)
+	// 调用服务层删除告警信息，传入用户ID和角色进行权限控制
+	err = h.warningService.DeleteWarningInfo(alertID, uid, role)
 	if err != nil {
 		logger.L().Error("删除告警信息失败", logger.WithError(err))
-		Error(c, CodeInternalServerError, err.Error())
+		if err.Error() == "您没有权限删除该告警信息" {
+			Error(c, CodeForbidden, err.Error())
+		} else {
+			Error(c, CodeInternalServerError, err.Error())
+		}
 		return
 	}
 

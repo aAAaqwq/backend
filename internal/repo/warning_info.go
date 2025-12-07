@@ -50,7 +50,7 @@ func (r *WarningInfoRepository) GetWarningInfo(alertID int64) (*model.WarningInf
 }
 
 // GetWarningInfoList 获取告警信息列表
-func (r *WarningInfoRepository) GetWarningInfoList(page, pageSize int, alertType, alertStatus string, devID, dataID *int64) ([]*model.WarningInfo, int64, error) {
+func (r *WarningInfoRepository) GetWarningInfoList(page, pageSize int, alertType, alertStatus string, devID, dataID *int64, devIDs []int64) ([]*model.WarningInfo, int64, error) {
 	whereClause := "WHERE 1=1"
 	args := []interface{}{}
 
@@ -69,6 +69,18 @@ func (r *WarningInfoRepository) GetWarningInfoList(page, pageSize int, alertType
 	if dataID != nil {
 		whereClause += " AND data_id = ?"
 		args = append(args, *dataID)
+	}
+	// 添加设备ID列表过滤（用于普通用户只能查看有权限的设备）
+	if len(devIDs) > 0 {
+		placeholders := ""
+		for i := range devIDs {
+			if i > 0 {
+				placeholders += ","
+			}
+			placeholders += "?"
+			args = append(args, devIDs[i])
+		}
+		whereClause += " AND dev_id IN (" + placeholders + ")"
 	}
 
 	offset := (page - 1) * pageSize

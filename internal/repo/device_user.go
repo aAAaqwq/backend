@@ -184,6 +184,27 @@ func (r *DeviceUserRepository) GetUserDevices(uid int64, page, pageSize int, dev
 	return devices, total, nil
 }
 
+// GetUserDeviceIDs 获取用户有权限的设备ID列表
+func (r *DeviceUserRepository) GetUserDeviceIDs(uid int64) ([]int64, error) {
+	query := `SELECT dev_id FROM user_dev WHERE uid = ?`
+	rows, err := mysql.MysqlCli.Client.Query(query, uid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var devIDs []int64
+	for rows.Next() {
+		var devID int64
+		if err := rows.Scan(&devID); err != nil {
+			return nil, err
+		}
+		devIDs = append(devIDs, devID)
+	}
+
+	return devIDs, nil
+}
+
 // GetUserDeviceStatistics 获取用户设备统计信息
 func (r *DeviceUserRepository) GetUserDeviceStatistics(uid int64) (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
