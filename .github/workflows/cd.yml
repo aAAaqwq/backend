@@ -1,30 +1,33 @@
 name: CI/CD to Docker Hub + Server
 
-
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:      # 允许手动触发
+  workflow_dispatch:
 
 env:
-  # === 可配置变量区（仅需在这里改） ===
-  DOCKER_IMAGE_NAME: aaqwqaa/sensor_backend  # 仓库/镜像名
-  DOCKER_CONTAINER_NAME: server                   # 服务器上运行的容器名
-  DOCKER_CONTAINER_PORT: "12000"                                 # 容器内部端口
-  HOST_HTTP_PORT: "12000"                                        # 映射到服务器的端口
-  # 如有额外挂载目录/环境变量，可在 Deploy 步骤的 docker run 里加
+  DOCKER_IMAGE_NAME: aaqwqaa/sensor_backend
+  DOCKER_CONTAINER_NAME: server
+  DOCKER_CONTAINER_PORT: "12000"
+  HOST_HTTP_PORT: "12000"
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     environment: dev
+    timeout-minutes: 20
+    concurrency:
+      group: cd-${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
-      - name: Checkout code
+      - name: Checkout code (shallow)
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      # 如果项目有包管理依赖（如 npm/pip/gradle），在这里添加对应的缓存步骤
+      # 例如：actions/setup-node + actions/cache，或 pip 缓存等
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -35,16 +38,28 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push Docker image
+      - name: Build and push (use registry & gha cache)
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
             ${{ env.DOCKER_IMAGE_NAME }}:latest
-          platforms: linux/amd64,linux/arm64  # 如果不需要多架构可以删掉这一行
+            ${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+          # 仅 amd64，去掉 QEMU，可显著提速
+          platforms: linux/amd64
+          # 开启缓存（双重缓存：GitHub Actions + registry）
+          cache-from: |
+            type=registry,ref=${{ env.DOCKER_IMAGE_NAME }}:buildcache
+            type=gha
+          cache-to: |
+            type=registry,ref=${{ env.DOCKER_IMAGE_NAME }}:buildcache,mode=max
+            type=gha,mode=max
+          # 可选：加速网络与并行拉取层
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
 
-      - name: Deploy to Server via SSH
+      - name: Deploy to Server via SSH (compose pull + up)
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.SERVER_SSH_HOST }}
@@ -73,21 +88,13 @@ jobs:
                 sleep "$delay"
               done
             }
-            echo "Cleaning up old containers and images..."
-            docker rm -f ${{ env.DOCKER_CONTAINER_NAME }} || true
-            docker rmi -f ${{ env.DOCKER_IMAGE_NAME }}:latest || true
-
-            echo "Pulling latest image (with retry)..."
-            retry docker pull ${{ env.DOCKER_IMAGE_NAME }}:latest
-
-            echo "Stopping old container if exists..."
-            docker stop ${{ env.DOCKER_CONTAINER_NAME }} || true
-            docker rm ${{ env.DOCKER_CONTAINER_NAME }} || true
-
-            echo "Starting new container..."
+            
             cd /srv/backend
-            # git stash
-            # git pull
-            # git stash drop
+            
+            # 更新镜像到最新（根据 compose 中的 image 指定）
+            retry docker compose pull backend
+            # 以最新镜像重启服务，避免手动 rm/pull
             docker compose up -d backend
+            # 可选：等待健康检查通过（如果 compose/service 有 healthcheck）
+            # docker inspect --format='{{json .State.Health.Status}}' ${{ env.DOCKER_CONTAINER_NAME }}
             echo "Deployment completed successfully!"
