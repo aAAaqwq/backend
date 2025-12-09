@@ -15,7 +15,7 @@ type Point struct {
 // FileData 文件数据
 type FileData struct {
 	UploadID   string `json:"upload_id" binding:"required"`
-	BucketName string `json:"bucket_name" binding:"required"`
+	BucketName string `json:"bucket_name" `
 	BucketKey  string `json:"bucket_key"`
 }
 

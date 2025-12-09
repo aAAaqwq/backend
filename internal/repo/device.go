@@ -67,9 +67,9 @@ func (r *DeviceRepository) GetDevices(page, pageSize int, devType string, devSta
 		args = append(args, *devStatus)
 	}
 	if !utils.IsEmpty(keyword) {
-		whereClause += " AND (dev_name LIKE ? OR model LIKE ?)"
+		whereClause += " AND (dev_name LIKE ? OR model LIKE ? OR CAST(dev_id AS CHAR) LIKE ? OR version LIKE ? OR dev_type LIKE ? OR DATE_FORMAT(create_at, '%Y-%m-%d %H:%i:%s') LIKE ? OR DATE_FORMAT(update_at, '%Y-%m-%d %H:%i:%s') LIKE ?)"
 		keywordPattern := "%" + keyword + "%"
-		args = append(args, keywordPattern, keywordPattern)
+		args = append(args, keywordPattern, keywordPattern, keywordPattern, keywordPattern, keywordPattern, keywordPattern, keywordPattern)
 	}
 
 	if utils.IsEmpty(sortBy) {
@@ -246,9 +246,9 @@ func (r *DeviceRepository) GetDevicesByIDs(devIDs []int64, page, pageSize int, d
 		args = append(args, *devStatus)
 	}
 	if !utils.IsEmpty(keyword) {
-		whereClause += " AND (dev_name LIKE ? OR model LIKE ?)"
+		whereClause += " AND (dev_name LIKE ? OR model LIKE ? OR CAST(dev_id AS CHAR) LIKE ? OR version LIKE ? OR dev_type LIKE ? OR DATE_FORMAT(create_at, '%Y-%m-%d %H:%i:%s') LIKE ? OR DATE_FORMAT(update_at, '%Y-%m-%d %H:%i:%s') LIKE ?)"
 		keywordPattern := "%" + keyword + "%"
-		args = append(args, keywordPattern, keywordPattern)
+		args = append(args, keywordPattern, keywordPattern, keywordPattern, keywordPattern, keywordPattern, keywordPattern, keywordPattern)
 	}
 
 	if utils.IsEmpty(sortBy) {
