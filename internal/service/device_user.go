@@ -60,7 +60,7 @@ func (s *DeviceUserService) BindDeviceUser(devID int64, req *model.DeviceUserBin
 
 	deviceUser := &model.DeviceUser{
 		UID:             req.UID,
-		DevID:           devID,
+		DevID:           model.Int64ToID(devID),
 		PermissionLevel: req.PermissionLevel,
 		BindAt:          utils.GetCurrentTime(),
 	}

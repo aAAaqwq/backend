@@ -103,9 +103,9 @@ func (h *SensorDataHandler) GetSeriesData(c *gin.Context) {
 	if req.Tags == nil {
 		req.Tags = make(map[string]string)
 	}
-	req.Tags["dev_id"] = fmt.Sprintf("%d", req.DevID)
+	req.Tags["dev_id"] = req.DevID.String()
 
-	points, err := h.sensorDataService.GetSeriesData(req.Measurement, req.DevID, currentUID, req.StartTime, req.EndTime,
+	points, err := h.sensorDataService.GetSeriesData(req.Measurement, req.DevID.Int64(), currentUID, req.StartTime, req.EndTime,
 		req.Tags, req.Fields, req.DownSampleInterval, req.Aggregate, req.LimitPoints, role)
 	if err != nil {
 		logger.L().Error("查询时序数据失败", logger.WithError(err))
@@ -237,7 +237,7 @@ func (h *SensorDataHandler) DeleteSeriesData(c *gin.Context) {
 		endTime = &timestamp
 	}
 
-	if err := h.sensorDataService.DeleteSeriesData(req.DevID, startTime, endTime, currentUID, role); err != nil {
+	if err := h.sensorDataService.DeleteSeriesData(req.DevID.Int64(), startTime, endTime, currentUID, role); err != nil {
 		logger.L().Error("删除时序数据元数据失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())
 		return

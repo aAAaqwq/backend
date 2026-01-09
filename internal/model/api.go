@@ -16,7 +16,7 @@ type UpdateUserInfoRequest struct {
 
 // GetSeriesDataRequest 查询时序数据请求
 type GetSeriesDataRequest struct {
-	DevID              int64              `json:"dev_id" binding:"required"`
+	DevID              DeviceID           `json:"dev_id" binding:"required"`
 	StartTime          int64              `json:"start_time" binding:"required"`
 	EndTime            int64              `json:"end_time" binding:"required"`
 	Measurement        string             `json:"measurement" binding:"required"`
@@ -29,9 +29,9 @@ type GetSeriesDataRequest struct {
 
 // DeleteSeriesDataRequest 删除时序数据请求
 type DeleteSeriesDataRequest struct {
-	DevID     int64  `json:"dev_id" binding:"required"`
-	StartTime string `json:"start_time" binding:"omitempty"`
-	EndTime   string `json:"end_time" binding:"omitempty"`
+	DevID     DeviceID `json:"dev_id" binding:"required"`
+	StartTime string    `json:"start_time" binding:"omitempty"`
+	EndTime   string    `json:"end_time" binding:"omitempty"`
 }
 
 // DeleteFileDataRequest 删除文件数据请求

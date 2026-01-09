@@ -133,7 +133,7 @@ func generateUploadID(devID int64, objectKey string, uid int64) string {
 // UploadSensorData 上传传感器数据（统一接口）
 func (s *SensorDataService) UploadSensorData(req *model.UploadSensorDataRequest) (int64, error) {
 	// 检查设备是否存在
-	_, err := s.deviceRepo.GetDevice(req.Metadata.DevID)
+	_, err := s.deviceRepo.GetDevice(req.Metadata.DevID.Int64())
 	if err != nil {
 		return 0, errors.New("设备不存在")
 	}
@@ -186,7 +186,7 @@ func (s *SensorDataService) uploadSeriesData(req *model.UploadSensorDataRequest)
 		}
 
 		// tags包含dev_id(string)和quality_score(string，从metadata添加)
-		req.SeriesData.Points[i].Tags["dev_id"] = fmt.Sprintf("%d", req.Metadata.DevID)
+		req.SeriesData.Points[i].Tags["dev_id"] = req.Metadata.DevID.String()
 		req.SeriesData.Points[i].Tags["data_id"] = fmt.Sprintf("%d", req.Metadata.DataID)
 
 		// 优先使用point中fields的quality_score，否则使用metadata中的
@@ -258,7 +258,7 @@ func (s *SensorDataService) uploadFileData(req *model.UploadSensorDataRequest) e
 	}
 
 	// 验证设备ID匹配
-	if session.DevID != req.Metadata.DevID {
+	if session.DevID != req.Metadata.DevID.Int64() {
 		return errors.New("设备ID不匹配")
 	}
 

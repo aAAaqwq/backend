@@ -105,7 +105,7 @@ func (s *WarningInfoService) UpdateWarningStatus(alertID int64, alertStatus stri
 
 		hasPermission := false
 		for _, devID := range userDevIDs {
-			if devID == warning.DevID {
+			if devID == warning.DevID.Int64() {
 				hasPermission = true
 				break
 			}
@@ -150,7 +150,7 @@ func (s *WarningInfoService) DeleteWarningInfo(alertID int64, uid int64, role st
 
 		hasPermission := false
 		for _, devID := range userDevIDs {
-			if devID == warning.DevID {
+			if devID == warning.DevID.Int64() {
 				hasPermission = true
 				break
 			}

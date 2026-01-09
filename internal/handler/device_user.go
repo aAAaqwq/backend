@@ -5,7 +5,6 @@ import (
 	"backend/internal/model"
 	"backend/internal/service"
 	"backend/pkg/logger"
-	"backend/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -29,7 +28,7 @@ func (h *DeviceUserHandler) BindDeviceUser(c *gin.Context) {
 	}
 
 	// 验证必填字段
-	if req.DevID == 0 {
+	if req.DevID.IsZero() {
 		Error(c, CodeBadRequest, "dev_id为必填字段")
 		return
 	}
@@ -49,7 +48,7 @@ func (h *DeviceUserHandler) BindDeviceUser(c *gin.Context) {
 		return
 	}
 
-	deviceUser, err := h.deviceUserService.BindDeviceUser(req.DevID, req, currentUID, role)
+	deviceUser, err := h.deviceUserService.BindDeviceUser(req.DevID.Int64(), req, currentUID, role)
 	if err != nil {
 		logger.L().Error("绑定用户到设备失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())
@@ -64,8 +63,8 @@ func (h *DeviceUserHandler) BindDeviceUser(c *gin.Context) {
 // 管理员：可以解绑任意用户
 func (h *DeviceUserHandler) UnbindDeviceUser(c *gin.Context) {
 	var req struct {
-		UID   int64 `json:"uid"`
-		DevID int64 `json:"dev_id" binding:"required"`
+		UID   int64            `json:"uid"`
+		DevID model.DeviceID   `json:"dev_id" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -88,7 +87,7 @@ func (h *DeviceUserHandler) UnbindDeviceUser(c *gin.Context) {
 		return
 	}
 
-	err := h.deviceUserService.UnbindDeviceUser(req.DevID, req.UID, currentUID, role)
+	err := h.deviceUserService.UnbindDeviceUser(req.DevID.Int64(), req.UID, currentUID, role)
 	if err != nil {
 		logger.L().Error("解绑用户设备失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())
@@ -101,8 +100,8 @@ func (h *DeviceUserHandler) UnbindDeviceUser(c *gin.Context) {
 // GetDeviceUsers 获取指定设备的绑定用户列表
 func (h *DeviceUserHandler) GetDeviceUsers(c *gin.Context) {
 	devIDStr := c.Query("dev_id")
-	devID, err := utils.ConvertToInt64(devIDStr)
-	if err != nil || devID == 0 {
+	devID, err := model.StringToID(devIDStr)
+	if err != nil {
 		Error(c, CodeBadRequest, "无效的设备ID")
 		return
 	}
@@ -111,7 +110,7 @@ func (h *DeviceUserHandler) GetDeviceUsers(c *gin.Context) {
 	currentUID, _ := middleware.GetCurrentUserID(c)
 	role, _ := middleware.GetCurrentUserRole(c)
 
-	users, err := h.deviceUserService.GetDeviceUsers(devID, currentUID, role)
+	users, err := h.deviceUserService.GetDeviceUsers(devID.Int64(), currentUID, role)
 	if err != nil {
 		logger.L().Error("获取设备绑定用户列表失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())

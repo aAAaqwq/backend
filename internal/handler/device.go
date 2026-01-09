@@ -111,7 +111,7 @@ func (h *DeviceHandler) UpdateDevice(c *gin.Context) {
 	}
 
 	// 验证dev_id
-	if device.DevID == 0 {
+	if device.DevID.IsZero() {
 		Error(c, CodeBadRequest, "dev_id不能为空")
 		return
 	}
@@ -135,8 +135,8 @@ func (h *DeviceHandler) UpdateDevice(c *gin.Context) {
 // 管理员：可以删除所有设备
 func (h *DeviceHandler) DeleteDevice(c *gin.Context) {
 	devIDStr := c.Query("dev_id")
-	devID, err := utils.ConvertToInt64(devIDStr)
-	if err != nil || devID == 0 {
+	devID, err := model.StringToID(devIDStr)
+	if err != nil {
 		Error(c, CodeBadRequest, "无效的设备ID")
 		return
 	}
@@ -145,7 +145,7 @@ func (h *DeviceHandler) DeleteDevice(c *gin.Context) {
 	currentUID, _ := middleware.GetCurrentUserID(c)
 	role, _ := middleware.GetCurrentUserRole(c)
 
-	err = h.deviceService.DeleteDevice(devID, currentUID, role)
+	err = h.deviceService.DeleteDevice(devID.Int64(), currentUID, role)
 	if err != nil {
 		logger.L().Error("删除设备失败", logger.WithError(err))
 		Error(c, CodeInternalServerError, err.Error())

@@ -9,7 +9,7 @@ const (
 )
 
 type Device struct {
-	DevID            int64                  `json:"dev_id" db:"dev_id"`
+	DevID            DeviceID               `json:"dev_id" db:"dev_id"`
 	DevName          string                 `json:"dev_name" db:"dev_name" binding:"required"`
 	DevStatus        int                    `json:"dev_status" db:"dev_status" oneof:"0 1 2"`
 	DevType          string                 `json:"dev_type" db:"dev_type" binding:"required"`

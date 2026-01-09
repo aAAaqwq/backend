@@ -27,7 +27,7 @@ func NewDeviceService() *DeviceService {
 // CreateDevice 创建设备
 func (s *DeviceService) CreateDevice(device *model.Device, currentUID int64, role string) (*model.Device, error) {
 	// 生成设备ID
-	device.DevID = utils.GetDefaultSnowflake().Generate()
+	device.DevID = model.Int64ToID(utils.GetDefaultSnowflake().Generate())
 	device.CreateAt = utils.GetCurrentTime()
 	device.UpdateAt = utils.GetCurrentTime()
 
@@ -38,7 +38,7 @@ func (s *DeviceService) CreateDevice(device *model.Device, currentUID int64, rol
 
 	// 如果DevName为空，设置默认名称 <dev_type>_<dev_id>
 	if device.DevName == "" {
-		device.DevName = fmt.Sprintf("%s_%d", device.DevType, device.DevID)
+		device.DevName = fmt.Sprintf("%s_%d", device.DevType, device.DevID.Int64())
 	}
 
 	// // 设置默认设备状态为离线
@@ -90,7 +90,7 @@ func (s *DeviceService) GetDevices(page, pageSize int, devStatus *int, keyword, 
 	// 从用户绑定的设备中筛选
 	devIDs := make([]int64, 0, len(userDevices))
 	for _, dev := range userDevices {
-		devIDs = append(devIDs, dev.DevID)
+		devIDs = append(devIDs, dev.DevID.Int64())
 	}
 
 	// 使用设备ID列表过滤
@@ -103,7 +103,7 @@ func (s *DeviceService) GetDevices(page, pageSize int, devStatus *int, keyword, 
 func (s *DeviceService) UpdateDevice(device *model.Device, currentUID int64, role string) (*model.Device, error) {
 	// 权限检查
 	if role != model.RoleAdmin {
-		deviceUser, err := s.deviceUserRepo.GetDeviceUser(device.DevID, currentUID)
+		deviceUser, err := s.deviceUserRepo.GetDeviceUser(device.DevID.Int64(), currentUID)
 		if err != nil {
 			return nil, errors.New("您没有权限访问该设备")
 		}
