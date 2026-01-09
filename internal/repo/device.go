@@ -6,6 +6,7 @@ import (
 	"backend/pkg/utils"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 )
 
 type DeviceRepository struct{}
@@ -130,15 +131,26 @@ func (r *DeviceRepository) GetDevices(page, pageSize int, devType string, devSta
 // UpdateDevice 更新设备
 func (r *DeviceRepository) UpdateDevice(device *model.Device) error {
 	extendedConfigJSON, _ := json.Marshal(device.ExtendedConfig)
-	query := `UPDATE device SET dev_name = ?, dev_status = ?, dev_type = ?, dev_power = ?,
-		model = ?, version = ?, sampling_rate = ?, offline_threshold = ?, upload_interval = ?,
-		extended_config = ?, update_at = ? WHERE dev_id = ?`
+	// 注意: model 和 version 是 MySQL 保留字，需要用反引号包裹
+	query := "UPDATE device SET dev_name = ?, dev_status = ?, dev_type = ?, dev_power = ?," +
+		" `model` = ?, `version` = ?, sampling_rate = ?, offline_threshold = ?, upload_interval = ?," +
+		" extended_config = ?, update_at = ? WHERE dev_id = ?"
 
-	_, err := mysql.MysqlCli.Client.Exec(query,
+	result, err := mysql.MysqlCli.Client.Exec(query,
 		device.DevName, device.DevStatus, device.DevType, device.DevPower,
 		device.Model, device.Version, device.SamplingRate, device.OfflineThreshold, device.UploadInterval,
 		string(extendedConfigJSON), device.UpdateAt, device.DevID)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// 检查是否真的更新了记录，避免静默失败
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("设备不存在或未被更新: dev_id=%d", device.DevID)
+	}
+
+	return nil
 }
 
 // DeleteDevice 删除设备（级联删除user_dev中的绑定关系）
