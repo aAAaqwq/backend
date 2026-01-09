@@ -46,8 +46,8 @@ func InitMinIOClient(cfg config.MinIOConfig) (*minio.Client, error) {
 		return nil, fmt.Errorf("创建MinIO客户端失败: %v", err)
 	}
 
-	// 测试连接
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// 测试连接（远程MinIO需要更长的超时时间）
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	_, err = client.ListBuckets(ctx)
